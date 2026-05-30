@@ -11,14 +11,15 @@ on:
         description: 'Output ZIP filename (without .zip)'
         required: true
         type: string
-        default: 'downloaded_content'
 
 jobs:
   download-and-upload:
     runs-on: ubuntu-latest
     steps:
-      - name: Install aria2 and zip
-        run: sudo apt-get update && sudo apt-get install -y aria2 zip
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2 zip
 
       - name: Download torrent
         run: |
@@ -32,19 +33,23 @@ jobs:
         run: |
           cd ./download
           rm -f *.torrent 2>/dev/null || true
-          if [ -z "$(ls -A)" ]; then
-            echo "ERROR: No files downloaded!"
-            exit 1
-          fi
           zip -r "../${{ inputs.output_name }}.zip" .
           cd ..
-          echo "Created ${{ inputs.output_name }}.zip"
+
+      - name: Install gdrive
+        run: |
+          wget -O gdrive https://github.com/glotlabs/gdrive/releases/download/3.9.2/gdrive_linux-x64.tar.gz
+          tar -xzf gdrive
+          sudo mv gdrive /usr/local/bin/
+          chmod +x /usr/local/bin/gdrive
+
+      - name: Save service account key
+        run: |
+          echo '${{ secrets.GDRIVE_CREDENTIALS }}' > service-account.json
 
       - name: Upload to Google Drive
-        uses: gaurav-nelson/gdrive-action@v1
-        with:
-          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
-          file-path: "${{ inputs.output_name }}.zip"
-          folder-id: ${{ secrets.GDRIVE_FOLDER_ID }}
-          upload-name: "${{ inputs.output_name }}.zip"
-          overwrite: true
+        run: |
+          /usr/local/bin/gdrive files upload \
+            --service-account service-account.json \
+            --parent "${{ secrets.GDRIVE_FOLDER_ID }}" \
+            "${{ inputs.output_name }}.zip"
