@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: Install aria2 and zip
         run: sudo apt-get update && sudo apt-get install -y aria2 zip
-        
+
       - name: Download torrent
         run: |
           aria2c --seed-time=0 \
@@ -27,39 +27,27 @@ jobs:
                  --split=16 \
                  --dir=./download \
                  "${{ inputs.magnet_link }}"
-                 
-      - name: List downloaded files (debug)
-        run: |
-          echo "=== Downloaded files ==="
-          ls -la ./download/
-          echo "========================"
-          
-      - name: Zip all downloaded files
+
+      - name: Zip downloaded files
         run: |
           cd ./download
-          
-          # Remove any .torrent files first
+          # Remove .torrent files
           rm -f *.torrent 2>/dev/null || true
-          
-          # Check if there are any files
+          # Check if any files exist
           if [ -z "$(ls -A)" ]; then
             echo "ERROR: No files downloaded!"
             exit 1
           fi
-          
-          # Zip everything
-          zip -r "../${{ inputs.output_name }}.zip" ./*
-          echo "Created ${{ inputs.output_name }}.zip"
-          
-          # Go back and verify
+          # Create zip
+          zip -r "../${{ inputs.output_name }}.zip" .
           cd ..
-          ls -la "${{ inputs.output_name }}.zip"
-          
+          echo "Created ${{ inputs.output_name }}.zip ($(du -h ${{ inputs.output_name }}.zip | cut -f1))"
+
       - name: Upload to Google Drive
-        uses: Jumbo810/Upload_Github_Artifacts_TO_GDrive@v2.3.3
+        uses: adityak74/google-drive-upload-git-action@main
         with:
-          target: "${{ inputs.output_name }}.zip"
           credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
-          parent_folder_id: ${{ secrets.GDRIVE_FOLDER_ID }}
+          filename: "${{ inputs.output_name }}.zip"
+          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
           name: "${{ inputs.output_name }}.zip"
-          override: true
+          overwrite: "true"
