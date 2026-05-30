@@ -1,0 +1,41 @@
+name: Download Torrent File
+
+on:
+  workflow_dispatch:  # Manual trigger
+    inputs:
+      torrent_file:
+        description: 'Path to .torrent file'
+        required: true
+        default: 'example.torrent'
+        type: string
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Install transmission-cli
+      run: sudo apt-get update && sudo apt-get install -y transmission-cli
+    
+    - name: Download torrent file
+      run: |
+        # Create download directory
+        mkdir -p ./downloads
+        
+        # Download using the .torrent file
+        transmission-cli -w ./downloads "${{ github.workspace }}/${{ github.event.inputs.torrent_file }}" -tr 1
+        
+        # List downloaded files
+        echo "Downloaded files:"
+        ls -la ./downloads/
+      timeout-minutes: 60  # Adjust based on file size
+    
+    - name: Upload as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: torrent-download
+        path: ./downloads/
+        retention-days: 7  # How long to keep the artifact
