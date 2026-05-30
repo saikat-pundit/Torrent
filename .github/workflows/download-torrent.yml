@@ -1,7 +1,7 @@
-name: Download Torrent File
+name: Download Torrent with Aria2
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
     inputs:
       torrent_file:
         description: 'Path to .torrent file'
@@ -17,25 +17,26 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: Install transmission-cli
-      run: sudo apt-get update && sudo apt-get install -y transmission-cli
+    - name: Install aria2
+      run: sudo apt-get update && sudo apt-get install -y aria2
     
-    - name: Download torrent file
+    - name: Download using .torrent file
       run: |
-        # Create download directory
         mkdir -p ./downloads
         
-        # Download using the .torrent file
-        transmission-cli -w ./downloads "${{ github.workspace }}/${{ github.event.inputs.torrent_file }}" -tr 1
+        # Download torrent
+        aria2c --seed-time=0 \
+               --bt-save-metadata=true \
+               --dir=./downloads \
+               --torrent-file="${{ github.workspace }}/${{ github.event.inputs.torrent_file }}"
         
-        # List downloaded files
-        echo "Downloaded files:"
+        # Show downloaded files
         ls -la ./downloads/
-      timeout-minutes: 60  # Adjust based on file size
+      timeout-minutes: 60
     
-    - name: Upload as artifact
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: torrent-download
         path: ./downloads/
-        retention-days: 7  # How long to keep the artifact
+        compression-level: 0  # Don't compress, faster upload
