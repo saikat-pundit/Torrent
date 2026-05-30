@@ -1,42 +1,31 @@
-name: Download Torrent with Aria2
+name: Download Legitimate Torrent
 
 on:
   workflow_dispatch:
     inputs:
-      torrent_file:
-        description: 'Path to .torrent file'
+      magnet_link:
+        description: 'Magnet Link'
         required: true
-        default: 'example.torrent'
         type: string
 
 jobs:
   download:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Install aria2
-      run: sudo apt-get update && sudo apt-get install -y aria2
-    
-    - name: Download using .torrent file
-      run: |
-        mkdir -p ./downloads
+      - name: Install aria2
+        run: sudo apt-get update && sudo apt-get install -y aria2
         
-        # Download torrent
-        aria2c --seed-time=0 \
-               --bt-save-metadata=true \
-               --dir=./downloads \
-               --torrent-file="${{ github.workspace }}/${{ github.event.inputs.torrent_file }}"
-        
-        # Show downloaded files
-        ls -la ./downloads/
-      timeout-minutes: 60
-    
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: torrent-download
-        path: ./downloads/
-        compression-level: 0  # Don't compress, faster upload
+      - name: Download torrent
+        run: |
+          aria2c --seed-time=0 \
+                 --max-connection-per-server=16 \
+                 --split=16 \
+                 "${{ inputs.magnet_link }}"
+                 
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: downloaded-files
+          path: |
+            *.*
+            !*.torrent
