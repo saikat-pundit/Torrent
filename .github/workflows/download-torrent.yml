@@ -31,23 +31,20 @@ jobs:
       - name: Zip downloaded files
         run: |
           cd ./download
-          # Remove .torrent files
           rm -f *.torrent 2>/dev/null || true
-          # Check if any files exist
           if [ -z "$(ls -A)" ]; then
             echo "ERROR: No files downloaded!"
             exit 1
           fi
-          # Create zip
           zip -r "../${{ inputs.output_name }}.zip" .
           cd ..
-          echo "Created ${{ inputs.output_name }}.zip ($(du -h ${{ inputs.output_name }}.zip | cut -f1))"
+          echo "Created ${{ inputs.output_name }}.zip"
 
       - name: Upload to Google Drive
-        uses: adityak74/google-drive-upload-git-action@main
+        uses: gaurav-nelson/gdrive-action@v1
         with:
-          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
-          filename: "${{ inputs.output_name }}.zip"
-          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
-          name: "${{ inputs.output_name }}.zip"
-          overwrite: "true"
+          credentials: ${{ secrets.GDRIVE_CREDENTIALS_RAW }}
+          file-path: "${{ inputs.output_name }}.zip"
+          folder-id: ${{ secrets.GDRIVE_FOLDER_ID }}
+          upload-name: "${{ inputs.output_name }}.zip"
+          overwrite: true
