@@ -1,4 +1,4 @@
-name: Download Legitimate Torrent
+name: Download Torrent and Upload to Google Drive
 
 on:
   workflow_dispatch:
@@ -8,13 +8,13 @@ on:
         required: true
         type: string
       output_name:
-        description: 'Output filename (with extension, e.g., file.zip)'
+        description: 'Output filename (with extension)'
         required: false
         type: string
         default: 'downloaded_file'
 
 jobs:
-  download:
+  download-and-upload:
     runs-on: ubuntu-latest
     steps:
       - name: Install aria2
@@ -31,19 +31,16 @@ jobs:
       - name: Rename downloaded file
         run: |
           cd ./download
-          # Find the downloaded file (excluding .torrent files)
           DOWNLOADED_FILE=$(find . -maxdepth 1 -type f ! -name "*.torrent" | head -1)
           if [[ -n "$DOWNLOADED_FILE" && -n "${{ inputs.output_name }}" ]]; then
             mv "$DOWNLOADED_FILE" "${{ inputs.output_name }}"
-            echo "Renamed to ${{ inputs.output_name }}"
-          elif [[ -n "$DOWNLOADED_FILE" ]]; then
-            echo "No rename specified, keeping original name: $DOWNLOADED_FILE"
           fi
           
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload to Google Drive
+        uses: Jumbo810/Upload_Github_Artifacts_TO_GDrive@v2.3.3
         with:
-          name: ${{ inputs.output_name || 'downloaded-files' }}
-          path: |
-            ./download/*
-            !./download/*.torrent
+          target: "./download/${{ inputs.output_name }}"
+          credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
+          parent_folder_id: ${{ secrets.GDRIVE_FOLDER_ID }}
+          name: ${{ inputs.output_name }}
+          override: true
