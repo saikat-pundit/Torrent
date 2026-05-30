@@ -8,17 +8,17 @@ on:
         required: true
         type: string
       output_name:
-        description: 'Output filename (with extension)'
-        required: false
+        description: 'Output ZIP filename (without .zip)'
+        required: true
         type: string
-        default: 'downloaded_file'
+        default: 'downloaded_content'
 
 jobs:
   download-and-upload:
     runs-on: ubuntu-latest
     steps:
-      - name: Install aria2
-        run: sudo apt-get update && sudo apt-get install -y aria2
+      - name: Install aria2 and zip
+        run: sudo apt-get update && sudo apt-get install -y aria2 zip
         
       - name: Download torrent
         run: |
@@ -28,19 +28,38 @@ jobs:
                  --dir=./download \
                  "${{ inputs.magnet_link }}"
                  
-      - name: Rename downloaded file
+      - name: List downloaded files (debug)
+        run: |
+          echo "=== Downloaded files ==="
+          ls -la ./download/
+          echo "========================"
+          
+      - name: Zip all downloaded files
         run: |
           cd ./download
-          DOWNLOADED_FILE=$(find . -maxdepth 1 -type f ! -name "*.torrent" | head -1)
-          if [[ -n "$DOWNLOADED_FILE" && -n "${{ inputs.output_name }}" ]]; then
-            mv "$DOWNLOADED_FILE" "${{ inputs.output_name }}"
+          
+          # Remove any .torrent files first
+          rm -f *.torrent 2>/dev/null || true
+          
+          # Check if there are any files
+          if [ -z "$(ls -A)" ]; then
+            echo "ERROR: No files downloaded!"
+            exit 1
           fi
+          
+          # Zip everything
+          zip -r "../${{ inputs.output_name }}.zip" ./*
+          echo "Created ${{ inputs.output_name }}.zip"
+          
+          # Go back and verify
+          cd ..
+          ls -la "${{ inputs.output_name }}.zip"
           
       - name: Upload to Google Drive
         uses: Jumbo810/Upload_Github_Artifacts_TO_GDrive@v2.3.3
         with:
-          target: "./download/${{ inputs.output_name }}"
+          target: "${{ inputs.output_name }}.zip"
           credentials: ${{ secrets.GDRIVE_CREDENTIALS }}
           parent_folder_id: ${{ secrets.GDRIVE_FOLDER_ID }}
-          name: ${{ inputs.output_name }}
+          name: "${{ inputs.output_name }}.zip"
           override: true
