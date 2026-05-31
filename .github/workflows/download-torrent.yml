@@ -1,4 +1,4 @@
-name: Download Legitimate Torrent
+name: Download
 
 on:
   workflow_dispatch:
