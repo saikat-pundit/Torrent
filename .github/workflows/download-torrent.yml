@@ -1,4 +1,4 @@
-name: Download Torrent and Upload to Google Drive
+name: Download Legitimate Torrent
 
 on:
   workflow_dispatch:
@@ -8,19 +8,18 @@ on:
         required: true
         type: string
       output_name:
-        description: 'Output ZIP filename (without .zip)'
-        required: true
+        description: 'Output filename (with extension, e.g., file.zip)'
+        required: false
         type: string
+        default: 'downloaded_file'
 
 jobs:
-  download-and-upload:
+  download:
     runs-on: ubuntu-latest
     steps:
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y aria2 zip
-
+      - name: Install aria2
+        run: sudo apt-get update && sudo apt-get install -y aria2
+        
       - name: Download torrent
         run: |
           aria2c --seed-time=0 \
@@ -28,28 +27,23 @@ jobs:
                  --split=16 \
                  --dir=./download \
                  "${{ inputs.magnet_link }}"
-
-      - name: Zip downloaded files
+                 
+      - name: Rename downloaded file
         run: |
           cd ./download
-          rm -f *.torrent 2>/dev/null || true
-          zip -r "../${{ inputs.output_name }}.zip" .
-          cd ..
-
-      - name: Install gdrive
-        run: |
-          wget -O gdrive https://github.com/glotlabs/gdrive/releases/download/3.9.2/gdrive_linux-x64.tar.gz
-          tar -xzf gdrive
-          sudo mv gdrive /usr/local/bin/
-          chmod +x /usr/local/bin/gdrive
-
-      - name: Save service account key
-        run: |
-          echo '${{ secrets.GDRIVE_CREDENTIALS }}' > service-account.json
-
-      - name: Upload to Google Drive
-        run: |
-          /usr/local/bin/gdrive files upload \
-            --service-account service-account.json \
-            --parent "${{ secrets.GDRIVE_FOLDER_ID }}" \
-            "${{ inputs.output_name }}.zip"
+          # Find the downloaded file (excluding .torrent files)
+          DOWNLOADED_FILE=$(find . -maxdepth 1 -type f ! -name "*.torrent" | head -1)
+          if [[ -n "$DOWNLOADED_FILE" && -n "${{ inputs.output_name }}" ]]; then
+            mv "$DOWNLOADED_FILE" "${{ inputs.output_name }}"
+            echo "Renamed to ${{ inputs.output_name }}"
+          elif [[ -n "$DOWNLOADED_FILE" ]]; then
+            echo "No rename specified, keeping original name: $DOWNLOADED_FILE"
+          fi
+          
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.output_name || 'downloaded-files' }}
+          path: |
+            ./download/*
+            !./download/*.torrent
