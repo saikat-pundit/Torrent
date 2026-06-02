@@ -21,7 +21,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y aria2 ffmpeg
-
+          
       - name: Download torrent
         run: |
           aria2c --seed-time=0 \
@@ -29,15 +29,25 @@ jobs:
                  --split=16 \
                  --dir=./download \
                  "${{ inputs.magnet_link }}"
-
+                 
       - name: Find and convert video files
         run: |
           cd ./download
           
-          echo "Contents of download directory:"
+          echo "Original contents of download directory:"
           ls -la
           
-          # Use process substitution to handle spaces correctly
+          # Move all files from subdirectories to current directory (handles torrent folders)
+          echo "Flattening subdirectories..."
+          find . -mindepth 2 -type f -exec mv {} . \;
+          
+          # Remove empty directories
+          find . -type d -empty -delete
+          
+          echo "Contents after flattening:"
+          ls -la
+          
+          # Find all video files (common formats) - handles spaces in filenames
           find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" \) -print0 > /tmp/videos.list
           
           if [ ! -s /tmp/videos.list ]; then
@@ -95,7 +105,7 @@ jobs:
           echo "Final files:"
           ls -la
           echo "========================================="
-
+          
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
