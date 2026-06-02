@@ -21,7 +21,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y aria2 ffmpeg
-          ffmpeg -version
 
       - name: Download torrent
         run: |
@@ -38,28 +37,24 @@ jobs:
           echo "Contents of download directory:"
           ls -la
           
-          # Find all video files (common formats) - handles spaces in filenames
-          find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" \) -print0 2>/dev/null | while IFS= read -r -d '' INPUT_VIDEO; do
-            # Skip if no video found
-            if [[ -z "$INPUT_VIDEO" ]]; then
-              echo "No video files found in download directory"
-              exit 1
-            fi
-            
+          # Use process substitution to handle spaces correctly
+          find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" \) -print0 > /tmp/videos.list
+          
+          if [ ! -s /tmp/videos.list ]; then
+            echo "No video files found in download directory"
+            exit 1
+          fi
+          
+          COUNTER=1
+          while IFS= read -r -d '' INPUT_VIDEO; do
             # Get filename without path
             BASENAME=$(basename "$INPUT_VIDEO")
-            FILENAME_WO_EXT="${BASENAME%.*}"
-            
-            # Generate safe output filename
-            SAFE_NAME=$(echo "${{ inputs.output_name }}" | sed 's/[^a-zA-Z0-9._-]/_/g')
             
             # Determine output filename
-            if [[ -z "$OUTPUT_COUNTER" ]]; then
-              OUTPUT_FILE="${SAFE_NAME}.mkv"
-              OUTPUT_COUNTER=1
+            if [ $COUNTER -eq 1 ]; then
+              OUTPUT_FILE="${{ inputs.output_name }}.mkv"
             else
-              OUTPUT_FILE="${SAFE_NAME}_part${OUTPUT_COUNTER}.mkv"
-              OUTPUT_COUNTER=$((OUTPUT_COUNTER + 1))
+              OUTPUT_FILE="${{ inputs.output_name }}_part${COUNTER}.mkv"
             fi
             
             echo "========================================="
@@ -80,28 +75,24 @@ jobs:
               "$OUTPUT_FILE"
             
             # Check if conversion succeeded
-            if [[ $? -eq 0 ]]; then
+            if [ $? -eq 0 ]; then
               echo "✅ Successfully converted: $OUTPUT_FILE"
               # Remove original video file to save space
               rm -f "$INPUT_VIDEO"
-              echo "🗑️  Removed original file: $BASENAME"
             else
               echo "❌ Failed to convert: $BASENAME"
               exit 1
             fi
             
+            COUNTER=$((COUNTER + 1))
             echo ""
-          done
+          done < /tmp/videos.list
           
-          # Verify conversion was done
-          if [[ -z "$OUTPUT_COUNTER" ]]; then
-            echo "No video files found to convert!"
-            exit 1
-          fi
+          rm -f /tmp/videos.list
           
           echo "========================================="
           echo "✅ Conversion complete!"
-          echo "Final files in directory:"
+          echo "Final files:"
           ls -la
           echo "========================================="
 
