@@ -1,0 +1,95 @@
+name: Download and Convert to 480p x265
+
+on:
+  workflow_dispatch:
+    inputs:
+      magnet_link:
+        description: 'Magnet Link'
+        required: true
+        type: string
+      output_name:
+        description: 'Output filename (without extension, e.g., myvideo)'
+        required: false
+        type: string
+        default: 'converted_video'
+
+jobs:
+  download-and-convert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2 ffmpeg
+          ffmpeg -version
+
+      - name: Download torrent
+        run: |
+          aria2c --seed-time=0 \
+                 --max-connection-per-server=16 \
+                 --split=16 \
+                 --dir=./download \
+                 "${{ inputs.magnet_link }}"
+
+      - name: Find and convert video files
+        run: |
+          cd ./download
+          
+          # Find all video files (common formats)
+          VIDEO_FILES=$(find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" \) 2>/dev/null)
+          
+          if [[ -z "$VIDEO_FILES" ]]; then
+            echo "No video files found in download directory"
+            exit 1
+          fi
+          
+          # Convert each video file
+          COUNTER=1
+          for INPUT_VIDEO in $VIDEO_FILES; do
+            # Get filename without extension
+            BASENAME=$(basename "$INPUT_VIDEO")
+            FILENAME_WO_EXT="${BASENAME%.*}"
+            
+            # Determine output filename
+            if [[ $COUNTER -eq 1 ]]; then
+              OUTPUT_FILE="${{ inputs.output_name }}.mkv"
+            else
+              OUTPUT_FILE="${{ inputs.output_name }}_part${COUNTER}.mkv"
+            fi
+            
+            echo "Converting: $BASENAME -> $OUTPUT_FILE"
+            echo "Resolution: 720x304 (480p), Codec: libx265"
+            
+            # Convert to 480p x265 with all audio/subtitle streams retained
+            ffmpeg -i "$INPUT_VIDEO" \
+              -c:v libx265 \
+              -vf "scale=720:304:force_original_aspect_ratio=decrease,pad=720:304:(ow-iw)/2:(oh-ih)/2" \
+              -preset medium \
+              -crf 28 \
+              -c:a copy \
+              -c:s copy \
+              -map 0 \
+              "$OUTPUT_FILE"
+            
+            # Check if conversion succeeded
+            if [[ $? -eq 0 ]]; then
+              echo "Successfully converted: $OUTPUT_FILE"
+              # Remove original video file to save space
+              rm "$INPUT_VIDEO"
+            else
+              echo "Failed to convert: $BASENAME"
+              exit 1
+            fi
+            
+            COUNTER=$((COUNTER + 1))
+          done
+          
+          # Handle any remaining non-video files (keep them as-is)
+          echo "Conversion complete. Keeping all non-video files as original."
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.output_name || 'converted-files' }}
+          path: |
+            ./download/*
