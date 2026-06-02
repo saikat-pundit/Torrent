@@ -35,30 +35,38 @@ jobs:
         run: |
           cd ./download
           
-          # Find all video files (common formats)
-          VIDEO_FILES=$(find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" \) 2>/dev/null)
+          echo "Contents of download directory:"
+          ls -la
           
-          if [[ -z "$VIDEO_FILES" ]]; then
-            echo "No video files found in download directory"
-            exit 1
-          fi
-          
-          # Convert each video file
-          COUNTER=1
-          for INPUT_VIDEO in $VIDEO_FILES; do
-            # Get filename without extension
+          # Find all video files (common formats) - handles spaces in filenames
+          find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" \) -print0 2>/dev/null | while IFS= read -r -d '' INPUT_VIDEO; do
+            # Skip if no video found
+            if [[ -z "$INPUT_VIDEO" ]]; then
+              echo "No video files found in download directory"
+              exit 1
+            fi
+            
+            # Get filename without path
             BASENAME=$(basename "$INPUT_VIDEO")
             FILENAME_WO_EXT="${BASENAME%.*}"
             
+            # Generate safe output filename
+            SAFE_NAME=$(echo "${{ inputs.output_name }}" | sed 's/[^a-zA-Z0-9._-]/_/g')
+            
             # Determine output filename
-            if [[ $COUNTER -eq 1 ]]; then
-              OUTPUT_FILE="${{ inputs.output_name }}.mkv"
+            if [[ -z "$OUTPUT_COUNTER" ]]; then
+              OUTPUT_FILE="${SAFE_NAME}.mkv"
+              OUTPUT_COUNTER=1
             else
-              OUTPUT_FILE="${{ inputs.output_name }}_part${COUNTER}.mkv"
+              OUTPUT_FILE="${SAFE_NAME}_part${OUTPUT_COUNTER}.mkv"
+              OUTPUT_COUNTER=$((OUTPUT_COUNTER + 1))
             fi
             
-            echo "Converting: $BASENAME -> $OUTPUT_FILE"
+            echo "========================================="
+            echo "Converting: $BASENAME"
+            echo "Output: $OUTPUT_FILE"
             echo "Resolution: 720x304 (480p), Codec: libx265"
+            echo "========================================="
             
             # Convert to 480p x265 with all audio/subtitle streams retained
             ffmpeg -i "$INPUT_VIDEO" \
@@ -73,19 +81,29 @@ jobs:
             
             # Check if conversion succeeded
             if [[ $? -eq 0 ]]; then
-              echo "Successfully converted: $OUTPUT_FILE"
+              echo "✅ Successfully converted: $OUTPUT_FILE"
               # Remove original video file to save space
-              rm "$INPUT_VIDEO"
+              rm -f "$INPUT_VIDEO"
+              echo "🗑️  Removed original file: $BASENAME"
             else
-              echo "Failed to convert: $BASENAME"
+              echo "❌ Failed to convert: $BASENAME"
               exit 1
             fi
             
-            COUNTER=$((COUNTER + 1))
+            echo ""
           done
           
-          # Handle any remaining non-video files (keep them as-is)
-          echo "Conversion complete. Keeping all non-video files as original."
+          # Verify conversion was done
+          if [[ -z "$OUTPUT_COUNTER" ]]; then
+            echo "No video files found to convert!"
+            exit 1
+          fi
+          
+          echo "========================================="
+          echo "✅ Conversion complete!"
+          echo "Final files in directory:"
+          ls -la
+          echo "========================================="
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
