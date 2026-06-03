@@ -82,7 +82,6 @@ jobs:
               -vf "$SCALE_FILTER" \
               -preset slow \
               -crf $CRF_VALUE \
-              -x265-params "aq-mode=3:no-sao" \
               -c:a copy \
               -c:s copy \
               -map 0 \
