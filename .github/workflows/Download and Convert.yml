@@ -43,10 +43,10 @@ jobs:
           cd ./download
           
           if [ "${{ inputs.quality }}" = "480p" ]; then
-            SCALE_FILTER="scale=720:-2:force_original_aspect_ratio=decrease"
+            SCALE_FILTER="scale=720:trunc(oh/2)*2:force_original_aspect_ratio=decrease"
             CRF_VALUE="23"
           else
-            SCALE_FILTER="scale=1280:-2:force_original_aspect_ratio=decrease"
+            SCALE_FILTER="scale=1280:trunc(oh/2)*2:force_original_aspect_ratio=decrease"
             CRF_VALUE="21"
           fi
           
