@@ -1,4 +1,4 @@
-name: Download and Convert to H.265 (Parallel)
+name: Download and Convert to H.265
 
 on:
   workflow_dispatch:
@@ -38,16 +38,18 @@ jobs:
                  --dir=./download \
                  "${{ inputs.magnet_link }}"
                  
-      - name: Find and convert video files with parallel encoding
+      - name: Find and convert video files
         run: |
           cd ./download
           
           if [ "${{ inputs.quality }}" = "480p" ]; then
             SCALE_FILTER="scale=720:-2"
-            CRF_VALUE="23"
+            CRF_VALUE="28"
+            PRESET="medium"
           else
             SCALE_FILTER="scale=1280:-2"
-            CRF_VALUE="21"
+            CRF_VALUE="26"
+            PRESET="medium"
           fi
           
           find . -mindepth 2 -type f -exec mv {} . \; 2>/dev/null
@@ -67,65 +69,22 @@ jobs:
             SAFE_NAME=$(echo "${{ inputs.output_name }}" | sed 's/[:\/\\?*<>|"'\'']/_/g')
             OUTPUT_FILE="${SAFE_NAME}.mkv"
             
-            echo "Converting: $BASENAME using parallel encoding"
+            echo "Converting: $BASENAME"
+            echo "Quality: ${{ inputs.quality }}, CRF: $CRF_VALUE, Preset: $PRESET"
             
-            # Get video duration in seconds
-            DURATION=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$INPUT_VIDEO" | awk '{print int($1)}')
-            SEGMENT_DURATION=$((DURATION / 4))
+            ffmpeg -i "$INPUT_VIDEO" \
+              -c:v libx265 \
+              -vf "$SCALE_FILTER" \
+              -preset $PRESET \
+              -crf $CRF_VALUE \
+              -c:a copy \
+              -c:s copy \
+              -map 0 \
+              "$OUTPUT_FILE"
             
-            echo "Total duration: ${DURATION}s, Segment duration: ${SEGMENT_DURATION}s"
-            
-            # Create segments directory
-            mkdir -p segments
-            
-            # Split video into 4 segments
-            echo "Splitting video into 4 segments..."
-            ffmpeg -i "$INPUT_VIDEO" -c copy -map 0 -segment_time $SEGMENT_DURATION -f segment -segment_list segments/segments.txt segments/segment_%03d.mkv
-            
-            # Encode segments in parallel
-            echo "Starting parallel encoding of 4 segments..."
-            for i in 0 1 2 3; do
-              (
-                SEGMENT_FILE="segments/segment_$(printf "%03d" $i).mkv"
-                OUTPUT_SEGMENT="segments/encoded_$(printf "%03d" $i).mkv"
-                
-                if [ -f "$SEGMENT_FILE" ]; then
-                  echo "Encoding segment $i..."
-                  ffmpeg -i "$SEGMENT_FILE" \
-                    -c:v libx265 \
-                    -vf "$SCALE_FILTER" \
-                    -preset slow \
-                    -crf $CRF_VALUE \
-                    -c:a copy \
-                    -c:s copy \
-                    -map 0 \
-                    "$OUTPUT_SEGMENT"
-                fi
-              ) &
-            done
-            
-            # Wait for all encoding jobs to complete
-            wait
-            echo "All segments encoded"
-            
-            # Create concat file list
-            echo "Merging segments..."
-            > segments/concat.txt
-            for i in 0 1 2 3; do
-              ENCODED_SEGMENT="segments/encoded_$(printf "%03d" $i).mkv"
-              if [ -f "$ENCODED_SEGMENT" ]; then
-                echo "file '$ENCODED_SEGMENT'" >> segments/concat.txt
-              fi
-            done
-            
-            # Concatenate all segments
-            ffmpeg -f concat -safe 0 -i segments/concat.txt -c copy "$OUTPUT_FILE"
-            
-            # Verify output
             if [ $? -eq 0 ] && [ -s "$OUTPUT_FILE" ]; then
               echo "Successfully converted: $OUTPUT_FILE"
               rm -f "$INPUT_VIDEO"
-              rm -rf segments
             else
               echo "Failed to convert: $BASENAME"
               exit 1
