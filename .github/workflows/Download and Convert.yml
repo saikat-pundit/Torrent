@@ -1,4 +1,4 @@
-name: Download and Convert to 480p x265
+name: Download and Convert to H.265
 
 on:
   workflow_dispatch:
@@ -7,6 +7,14 @@ on:
         description: 'Magnet Link'
         required: true
         type: string
+      quality:
+        description: 'Video Quality'
+        required: true
+        type: choice
+        default: '480p'
+        options:
+          - '480p'
+          - '720p'
       output_name:
         description: 'Output filename (without extension, e.g., myvideo)'
         required: false
@@ -17,77 +25,147 @@ jobs:
   download-and-convert:
     runs-on: ubuntu-latest
     steps:
-      - name: Install dependencies
+      - name: 🚀 Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y aria2 ffmpeg
+          echo "📦 Installing aria2 and ffmpeg..."
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq aria2 ffmpeg
+          echo "✅ Dependencies installed successfully"
+          ffmpeg -version | head -1
           
-      - name: Download torrent
+      - name: 📥 Download torrent
         run: |
+          echo "🎯 Magnet link received"
+          echo "⏬ Starting download with aria2..."
           aria2c --seed-time=0 \
                  --max-connection-per-server=16 \
                  --split=16 \
+                 --console-log-level=error \
+                 --summary-interval=1 \
                  --dir=./download \
                  "${{ inputs.magnet_link }}"
-                 
-      - name: Find and convert video files
+          echo "✅ Download completed successfully"
+          
+      - name: 🎬 Find and convert video files
         run: |
           cd ./download
           
-          echo "Original contents of download directory:"
+          # Set quality parameters
+          if [ "${{ inputs.quality }}" = "480p" ]; then
+            SCALE_FILTER="scale=720:-2:force_original_aspect_ratio=decrease"
+            CRF_VALUE="23"
+            QUALITY_LABEL="480p (720p scaled down)"
+            EXPECTED_BITRATE="800-1200 kbps"
+          else
+            SCALE_FILTER="scale=1280:-2:force_original_aspect_ratio=decrease"
+            CRF_VALUE="21"
+            QUALITY_LABEL="720p (1280px width)"
+            EXPECTED_BITRATE="1500-2500 kbps"
+          fi
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🎬 VIDEO CONVERSION SETTINGS"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📺 Quality Selected: ${{ inputs.quality }}"
+          echo "🎯 Target: $QUALITY_LABEL"
+          echo "🎨 Codec: H.265 (libx265)"
+          echo "⚙️  Preset: slow (better compression)"
+          echo "📊 CRF: $CRF_VALUE (higher=smaller file)"
+          echo "💾 Expected bitrate: $EXPECTED_BITRATE"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          echo "📂 Original contents:"
           ls -la
           
-          # Move all files from subdirectories to current directory (handles torrent folders)
-          echo "Flattening subdirectories..."
-          find . -mindepth 2 -type f -exec mv {} . \;
+          # Flatten subdirectories
+          echo "🔄 Flattening subdirectories..."
+          find . -mindepth 2 -type f -exec mv {} . \; 2>/dev/null
+          find . -type d -empty -delete 2>/dev/null
           
-          # Remove empty directories
-          find . -type d -empty -delete
-          
-          echo "Contents after flattening:"
+          echo "📁 Contents after flattening:"
           ls -la
           
-          # Find all video files (common formats) - handles spaces in filenames
+          # Find all video files
           find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" \) -print0 > /tmp/videos.list
           
-          if [ ! -s /tmp/videos.list ]; then
-            echo "No video files found in download directory"
+          VIDEO_COUNT=$(find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" \) | wc -l)
+          
+          if [ $VIDEO_COUNT -eq 0 ]; then
+            echo "❌ No video files found in download directory"
             exit 1
           fi
           
+          echo "🎬 Found $VIDEO_COUNT video file(s) to convert"
+          echo ""
+          
           COUNTER=1
+          TOTAL_FILES=$VIDEO_COUNT
+          
           while IFS= read -r -d '' INPUT_VIDEO; do
             # Get filename without path
             BASENAME=$(basename "$INPUT_VIDEO")
             
+            # Sanitize output name
+            SAFE_NAME=$(echo "${{ inputs.output_name }}" | sed 's/[:\/\\?*<>|"'\'']/_/g')
+            
             # Determine output filename
             if [ $COUNTER -eq 1 ]; then
-              OUTPUT_FILE="${{ inputs.output_name }}.mkv"
+              OUTPUT_FILE="${SAFE_NAME}.mkv"
             else
-              OUTPUT_FILE="${{ inputs.output_name }}_part${COUNTER}.mkv"
+              OUTPUT_FILE="${SAFE_NAME}_part${COUNTER}.mkv"
             fi
             
-            echo "========================================="
-            echo "Converting: $BASENAME"
-            echo "Output: $OUTPUT_FILE"
-            echo "Resolution: 720x304 (480p), Codec: libx265"
-            echo "========================================="
+            # Get video info before conversion
+            ORIGINAL_SIZE=$(du -h "$INPUT_VIDEO" | cut -f1)
+            VIDEO_DURATION=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$INPUT_VIDEO" 2>/dev/null | awk '{print int($1)}')
+            DURATION_MIN=$((VIDEO_DURATION / 60))
+            DURATION_SEC=$((VIDEO_DURATION % 60))
             
-            # Convert to 480p x265 with all audio/subtitle streams retained
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "🎬 CONVERTING [$COUNTER/$TOTAL_FILES]"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "📹 Input: $BASENAME"
+            echo "💾 Original size: $ORIGINAL_SIZE"
+            echo "⏱️  Duration: ${DURATION_MIN}m ${DURATION_SEC}s"
+            echo "🎯 Output: $OUTPUT_FILE"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            # Convert with progress display
             ffmpeg -i "$INPUT_VIDEO" \
               -c:v libx265 \
-              -vf "scale=720:304:force_original_aspect_ratio=decrease,pad=720:304:(ow-iw)/2:(oh-ih)/2" \
-              -preset medium \
-              -crf 28 \
+              -vf "$SCALE_FILTER" \
+              -preset slow \
+              -crf $CRF_VALUE \
+              -x265-params "aq-mode=3:no-sao" \
               -c:a copy \
               -c:s copy \
               -map 0 \
-              "$OUTPUT_FILE"
+              -progress pipe:1 \
+              "$OUTPUT_FILE" 2>&1 | while IFS= read -r line; do
+                if [[ $line =~ out_time_ms=([0-9]+) ]]; then
+                  PROGRESS_MS="${BASH_REMATCH[1]}"
+                  PROGRESS_SEC=$((PROGRESS_MS / 1000000))
+                  if [ $VIDEO_DURATION -gt 0 ]; then
+                    PERCENT=$((PROGRESS_SEC * 100 / VIDEO_DURATION))
+                    # Create progress bar
+                    BAR_LENGTH=40
+                    FILLED=$((PERCENT * BAR_LENGTH / 100))
+                    EMPTY=$((BAR_LENGTH - FILLED))
+                    BAR=$(printf "%${FILLED}s" | tr ' ' '█')
+                    BAR="${BAR}$(printf "%${EMPTY}s" | tr ' ' '░')"
+                    printf "\r📊 Progress: [${BAR}] ${PERCENT}%% (${PROGRESS_SEC}s / ${VIDEO_DURATION}s)    "
+                  fi
+                fi
+              done
+            
+            echo "" # New line after progress bar
             
             # Check if conversion succeeded
             if [ $? -eq 0 ]; then
+              FINAL_SIZE=$(du -h "$OUTPUT_FILE" | cut -f1)
               echo "✅ Successfully converted: $OUTPUT_FILE"
-              # Remove original video file to save space
+              echo "📦 Final size: $FINAL_SIZE (was $ORIGINAL_SIZE)"
+              # Remove original video file
               rm -f "$INPUT_VIDEO"
             else
               echo "❌ Failed to convert: $BASENAME"
@@ -100,15 +178,18 @@ jobs:
           
           rm -f /tmp/videos.list
           
-          echo "========================================="
-          echo "✅ Conversion complete!"
-          echo "Final files:"
-          ls -la
-          echo "========================================="
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ CONVERSION COMPLETE!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📁 Final files in directory:"
+          ls -lh
+          echo ""
+          echo "💡 Tip: Subtitle files (.srt) and other non-video files remain untouched"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
-      - name: Upload artifacts
+      - name: 📤 Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.output_name || 'converted-files' }}
+          name: ${{ inputs.output_name }}-${{ inputs.quality }}
           path: |
             ./download/*
