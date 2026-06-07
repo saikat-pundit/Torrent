@@ -42,19 +42,29 @@ jobs:
         run: |
           cd ./download
           
+          # Set quality-specific parameters for H.265
           if [ "${{ inputs.quality }}" = "480p" ]; then
-            SCALE_FILTER="scale=720:-2"
-            CRF_VALUE="28"
-            PRESET="medium"
+            # 480p: Standard definition
+            SCALE_FILTER="scale=-2:480"          # Auto-width, preserve aspect ratio
+            CRF_VALUE="28"                        # Good balance for 480p (H.265)
+            PRESET="medium"                       # Balance speed vs compression
+            AUDIO_BITRATE="128k"                  # Audio quality for 480p
+            PIX_FMT="yuv420p"                     # Maximum compatibility
           else
-            SCALE_FILTER="scale=1280:-2"
-            CRF_VALUE="26"
-            PRESET="medium"
+            # 720p: HD ready
+            SCALE_FILTER="scale=-2:720"          # Auto-width, preserve aspect ratio
+            CRF_VALUE="26"                        # Higher quality for HD
+            PRESET="medium"                       # Balance speed vs compression
+            AUDIO_BITRATE="160k"                  # Better audio for HD
+            PIX_FMT="yuv420p"                     # Maximum compatibility
           fi
           
+          # Flatten directory structure (move all files to root)
           find . -mindepth 2 -type f -exec mv {} . \; 2>/dev/null
+          # Remove empty directories
           find . -type d -empty -delete 2>/dev/null
           
+          # Find all video files
           find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" \) -print0 > /tmp/videos.list
           
           VIDEO_COUNT=$(find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" \) | wc -l)
@@ -64,29 +74,53 @@ jobs:
             exit 1
           fi
           
+          # Process each video file
           while IFS= read -r -d '' INPUT_VIDEO; do
             BASENAME=$(basename "$INPUT_VIDEO")
             SAFE_NAME=$(echo "${{ inputs.output_name }}" | sed 's/[:\/\\?*<>|"'\'']/_/g')
             OUTPUT_FILE="${SAFE_NAME}.mkv"
             
+            echo "========================================="
             echo "Converting: $BASENAME"
-            echo "Quality: ${{ inputs.quality }}, CRF: $CRF_VALUE, Preset: $PRESET"
+            echo "Quality: ${{ inputs.quality }}"
+            echo "Scale: $SCALE_FILTER"
+            echo "CRF: $CRF_VALUE"
+            echo "Preset: $PRESET"
+            echo "Audio: $AUDIO_BITRATE AAC"
+            echo "========================================="
             
+            # Storage-efficient H.265 encoding with audio re-encoding for smaller size
             ffmpeg -i "$INPUT_VIDEO" \
               -c:v libx265 \
               -vf "$SCALE_FILTER" \
-              -preset $PRESET \
-              -crf $CRF_VALUE \
-              -c:a copy \
+              -preset "$PRESET" \
+              -crf "$CRF_VALUE" \
+              -pix_fmt "$PIX_FMT" \
+              -map 0:v \
+              -map 0:a \
+              -map 0:s? \
               -c:s copy \
-              -map 0 \
+              -c:a aac \
+              -b:a "$AUDIO_BITRATE" \
+              -ac 2 \
+              -ar 48000 \
+              -movflags +faststart \
+              -x265-params "no-sao=1:aq-mode=3:max-merge=3:rd=4" \
               "$OUTPUT_FILE"
             
             if [ $? -eq 0 ] && [ -s "$OUTPUT_FILE" ]; then
-              echo "Successfully converted: $OUTPUT_FILE"
+              # Calculate size reduction
+              ORIG_SIZE=$(stat -c%s "$INPUT_VIDEO")
+              NEW_SIZE=$(stat -c%s "$OUTPUT_FILE")
+              RATIO=$(echo "scale=2; $NEW_SIZE * 100 / $ORIG_SIZE" | bc)
+              echo "✓ Successfully converted: $OUTPUT_FILE"
+              echo "  Original size: $(numfmt --to=iec $ORIG_SIZE)"
+              echo "  New size: $(numfmt --to=iec $NEW_SIZE)"
+              echo "  Compression: $RATIO% of original"
+              # Remove original file to save space
               rm -f "$INPUT_VIDEO"
             else
-              echo "Failed to convert: $BASENAME"
+              echo "✗ Failed to convert: $BASENAME"
               exit 1
             fi
             
@@ -94,9 +128,12 @@ jobs:
           
           rm -f /tmp/videos.list
           
+          # Cleanup any remaining empty directories
+          find . -type d -empty -delete 2>/dev/null
+          
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.output_name }}-${{ inputs.quality }}
+          name: ${{ inputs.output_name }}-${{ inputs.quality }}-h265
           path: |
             ./download/*
