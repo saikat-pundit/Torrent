@@ -15,6 +15,11 @@ on:
         options:
           - '480p'
           - '720p'
+      zip_name:
+        description: 'Zip file name (without extension)'
+        required: false
+        type: string
+        default: 'converted_videos'
 
 jobs:
   download-and-convert:
@@ -127,7 +132,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: converted-videos-${{ github.run_id }}
+          name: ${{ inputs.zip_name }}
           path: |
             ./download/*.mkv
             ./download/*.srt
