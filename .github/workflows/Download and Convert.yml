@@ -87,7 +87,7 @@ jobs:
             done
             USED_NAMES["$FINAL_NAME"]=1
             
-            OUTPUT_FILE="${FINAL_NAME}.mkv"
+            OUTPUT_FILE="${FINAL_NAME}_converted.mkv"
             
             echo "========================================="
             echo "Converting: $BASENAME"
