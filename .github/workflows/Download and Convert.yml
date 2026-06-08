@@ -95,7 +95,7 @@ jobs:
             echo "Quality: ${{ inputs.quality }}, CRF: $CRF_VALUE, Preset: $PRESET"
             echo "========================================="
             
-            ffmpeg -i "$INPUT_VIDEO" \
+            ffmpeg -nostdin -i "$INPUT_VIDEO" \
               -c:v libx265 \
               -vf "$SCALE_FILTER" \
               -preset $PRESET \
