@@ -103,12 +103,14 @@ def convert_video(inp, out, quality):
     print(f"🔊 Audio: {'Stereo 96kbps' if channels > 2 else 'Original (copy)'}")
     print(f"⏱️  Duration: {format_time(duration)}\n")
     
-    cmd = ['ffmpeg','-nostdin','-i',inp,'-c:v','libx265','-vf',scale,'-preset','medium','-crf',str(crf),'-pix_fmt','yuv420p','-map','0:v:0']
+    cmd = ['ffmpeg','-nostdin','-i',inp,'-c:v','libx265','-vf',scale,'-preset','medium','-crf',str(crf),'-pix_fmt','yuv420p']
+    cmd.extend(['-map','0:v:0'])
     if channels > 2:
-        cmd.extend(['-c:a','aac','-b:a','96k','-af','aformat=channel_layouts=stereo'])
+        cmd.extend(['-c:a','aac','-b:a','96k','-af','aformat=channel_layouts=stereo','-map','0:a:0'])
     else:
-        cmd.extend(['-c:a','copy'])
-    cmd.extend(['-c:s','copy','-map','0:s?',out])
+        cmd.extend(['-c:a','copy','-map','0:a:0'])
+    cmd.extend(['-c:s','copy','-map','0:s','-ignore_unknown'])
+    cmd.append(out)
     
     p = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True, bufsize=1)
     
