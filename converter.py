@@ -1,298 +1,121 @@
-import os
-import subprocess
-import sys
-import shutil
+import os, subprocess, sys, re, time
 from pathlib import Path
-import time
 
-def get_video_fps(input_file):
-    """Get video FPS using ffprobe"""
-    cmd = [
-        'ffprobe', '-v', 'error', '-select_streams', 'v:0',
-        '-show_entries', 'stream=r_frame_rate', '-of', 'default=noprint_wrappers=1:nokey=1',
-        input_file
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    fps_str = result.stdout.strip()
-    
-    if '/' in fps_str:
-        num, den = map(int, fps_str.split('/'))
-        fps = num / den if den != 0 else 24
-    else:
-        fps = float(fps_str) if fps_str else 24
-    
-    return fps
+def get_fps(f):
+    r = subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=r_frame_rate','-of','default=noprint_wrappers=1:nokey=1',f], capture_output=True, text=True)
+    s = r.stdout.strip()
+    if '/' in s:
+        n,d = map(int, s.split('/'))
+        return n/d if d else 24
+    return float(s) if s else 24
 
-def get_audio_channels(input_file):
-    """Get audio channel count"""
-    cmd = [
-        'ffprobe', '-v', 'error', '-select_streams', 'a:0',
-        '-show_entries', 'stream=channels', '-of', 'default=noprint_wrappers=1:nokey=1',
-        input_file
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    channels = result.stdout.strip()
-    return int(channels) if channels and channels.isdigit() else 2
+def get_channels(f):
+    r = subprocess.run(['ffprobe','-v','error','-select_streams','a:0','-show_entries','stream=channels','-of','default=noprint_wrappers=1:nokey=1',f], capture_output=True, text=True)
+    return int(r.stdout.strip()) if r.stdout.strip().isdigit() else 2
 
-def get_video_duration(input_file):
-    """Get video duration in seconds"""
-    cmd = [
-        'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-        '-of', 'default=noprint_wrappers=1:nokey=1', input_file
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    duration = result.stdout.strip()
-    return float(duration) if duration else 0
+def get_duration(f):
+    r = subprocess.run(['ffprobe','-v','error','-show_entries','format=duration','-of','default=noprint_wrappers=1:nokey=1',f], capture_output=True, text=True)
+    return float(r.stdout.strip()) if r.stdout.strip() else 0
 
-def convert_video(input_file, output_file, quality):
-    """Convert video with optimal settings"""
-    
-    # Get source FPS
-    source_fps = get_video_fps(input_file)
-    
-    # Determine target FPS (only reduce if above 24)
-    if source_fps > 24:
-        target_fps = 24
-        fps_filter = f"fps={target_fps}"
-    else:
-        target_fps = source_fps
-        fps_filter = ""
-    
-    # Set scaling based on quality
-    if quality == "480p":
-        scale_filter = "scale=480:-2:force_original_aspect_ratio=decrease"
-        crf = 28
-    else:
-        scale_filter = "scale=720:-2:force_original_aspect_ratio=decrease"
-        crf = 26
-    
-    # Combine filters
-    if fps_filter:
-        vf = f"{fps_filter},{scale_filter}"
-    else:
-        vf = scale_filter
-    
-    # Get audio channel config
-    source_channels = get_audio_channels(input_file)
-    if source_channels > 2:
-        audio_filter = "aformat=channel_layouts=stereo"
-        audio_codec = "aac"
-        audio_bitrate = "96k"
-    else:
-        audio_filter = ""
-        audio_codec = "copy"
-        audio_bitrate = ""
-    
-    # Get duration for progress display
-    duration = get_video_duration(input_file)
-    
-    print(f"\n{'='*50}")
-    print(f"🎬 CONVERTING VIDEO")
-    print(f"{'='*50}")
-    print(f"📹 Input: {Path(input_file).name}")
-    print(f"📺 Output: {Path(output_file).name}")
-    print(f"⚙️  Quality: {quality} | CRF: {crf}")
-    print(f"🎞️  Source FPS: {source_fps:.2f} → Target FPS: {target_fps:.2f}")
-    print(f"🔊 Audio: {'Stereo ' + audio_bitrate if audio_filter else 'Original (no change)'}")
-    print(f"⏱️  Duration: {duration//60:.0f}m {duration%60:.0f}s")
-    print(f"{'='*50}\n")
-    
-    # Build ffmpeg command with progress
-    cmd = [
-        'ffmpeg', '-nostdin', '-i', input_file,
-        '-c:v', 'libx265',
-        '-vf', vf,
-        '-preset', 'medium',
-        '-crf', str(crf),
-        '-pix_fmt', 'yuv420p',
-        '-x265-params', 'aq-mode=3',
-        '-map', '0:v:0'
-    ]
-    
-    # Add audio
-    if audio_filter:
-        cmd.extend(['-c:a', audio_codec, '-b:a', audio_bitrate, '-af', audio_filter])
-    else:
-        cmd.extend(['-c:a', 'copy'])
-    
-    # Add subtitles
-    cmd.extend(['-c:s', 'copy', '-map', '0:s?', output_file])
-    
-    # Run with progress display
-    process = subprocess.Popen(
-        cmd, 
-        stderr=subprocess.PIPE, 
-        stdout=subprocess.DEVNULL,
-        universal_newlines=True
-    )
-    
-    # Monitor progress
-    last_progress = 0
-    for line in process.stderr:
-        if 'frame=' in line:
-            # Extract frame number
-            frame_part = line.split('frame=')[1].split(' ')[0].strip()
-            if frame_part.isdigit():
-                frames = int(frame_part)
-                # Estimate progress (assuming 24 fps)
-                current_time = frames / 24
-                if duration > 0:
-                    percent = min(100, int((current_time / duration) * 100))
-                    if percent != last_progress:
-                        last_progress = percent
-                        bar_length = 40
-                        filled = int(bar_length * percent / 100)
-                        bar = '█' * filled + '░' * (bar_length - filled)
-                        print(f"\r📊 Progress: [{bar}] {percent}% ({int(current_time//60)}m {int(current_time%60)}s / {int(duration//60)}m {int(duration%60)}s)     ", end='', flush=True)
-    
-    process.wait()
-    print()  # New line after progress
-    
-    # Verify conversion
-    if process.returncode == 0 and os.path.getsize(output_file) > 0:
-        input_size = os.path.getsize(input_file) / (1024 * 1024)
-        output_size = os.path.getsize(output_file) / (1024 * 1024)
-        saved = ((input_size - output_size) / input_size) * 100
-        print(f"\n✅ Successfully converted!")
-        print(f"   📦 Original size: {input_size:.1f} MB")
-        print(f"   💾 Converted size: {output_size:.1f} MB")
-        print(f"   🎯 Saved: {saved:.1f}%\n")
-        return True
-    else:
-        print(f"\n❌ Conversion failed!\n")
-        return False
+def format_time(s):
+    return f"{int(s//60)}m {int(s%60)}s"
 
-def download_torrent(magnet_link, output_dir):
-    """Download torrent with visual progress"""
-    print(f"\n{'='*50}")
-    print(f"📥 DOWNLOADING TORRENT")
-    print(f"{'='*50}")
-    print(f"🔗 Magnet link received")
-    print(f"📁 Download directory: {output_dir}\n")
-    
-    cmd = [
-        'aria2c', '--seed-time=0',
-        '--max-connection-per-server=16',
-        '--split=16',
-        '--console-log-level=error',
-        '--summary-interval=1',
-        '--dir', output_dir,
-        magnet_link
-    ]
-    
-    process = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, universal_newlines=True, bufsize=1)
-    
-    last_percent = 0
-    for line in process.stderr:
-        # Look for download progress pattern like [#257e37 45MiB/5.8GiB(1%)]
-        if '(#' in line or '#' in line:
-            # Try to extract percentage
-            if '%' in line:
-                # Find percentage value
-                percent_start = line.find('(')
-                percent_end = line.find('%')
-                if percent_start != -1 and percent_end != -1:
-                    percent_str = line[percent_start+1:percent_end]
-                    # Extract numeric part
-                    import re
-                    percent_match = re.search(r'(\d+)', percent_str)
-                    if percent_match:
-                        percent = int(percent_match.group(1))
-                        if percent != last_percent and percent <= 100:
-                            last_percent = percent
-                            bar_length = 40
-                            filled = int(bar_length * percent / 100)
-                            bar = '█' * filled + '░' * (bar_length - filled)
-                            
-                            # Try to extract downloaded and total
-                            download_match = re.search(r'(\d+\.?\d*)([KMGT]?i?B)', line)
-                            total_match = re.search(r'/(\d+\.?\d*)([KMGT]?i?B)', line)
-                            
-                            if download_match and total_match:
-                                downloaded = download_match.group(0)
-                                total = total_match.group(0)
-                                print(f"\r📊 Download: [{bar}] {percent}% ({downloaded} / {total})     ", end='', flush=True)
-                            else:
-                                print(f"\r📊 Download: [{bar}] {percent}%     ", end='', flush=True)
-        
-        # Look for ETA
-        elif 'ETA' in line and '%' in line:
-            eta_match = re.search(r'ETA:? (\d+[hms]?)', line)
-            if eta_match:
-                eta = eta_match.group(1)
-                print(f" ⏱️ ETA: {eta}", end='', flush=True)
-        
-        # Check for download complete
-        elif 'Download complete' in line:
-            print(f"\n✅ Download completed!")
-    
-    process.wait()
-    
-    # Find downloaded video files
-    download_path = Path(output_dir)
-    video_files = []
-    for ext in ['*.mkv', '*.mp4', '*.avi', '*.mov', '*.ts']:
-        video_files.extend(download_path.rglob(ext))
-    
-    # Flatten subdirectories
-    for file in video_files:
-        if file.parent != download_path:
-            shutil.move(str(file), str(download_path / file.name))
-    
-    # Remove empty subdirectories
-    for subdir in download_path.iterdir():
-        if subdir.is_dir():
+def format_size(b):
+    for u in ['B','KB','MB','GB']:
+        if b < 1024: return f"{b:.1f}{u}"
+        b /= 1024
+    return f"{b:.1f}TB"
+
+def download_torrent(magnet, out_dir):
+    print(f"\n{'='*50}\n📥 DOWNLOADING\n{'='*50}")
+    p = subprocess.Popen(['aria2c','--seed-time=0','--max-connection-per-server=16','--split=16','--summary-interval=1','--dir',out_dir,magnet], stderr=subprocess.PIPE, universal_newlines=True, bufsize=1)
+    for line in p.stderr:
+        if '%' in line and '(' in line:
             try:
-                subdir.rmdir()
-            except:
-                pass
+                percent = int(re.search(r'\((\d+)%', line).group(1))
+                bar = '█' * int(40*percent/100) + '░' * (40 - int(40*percent/100))
+                speed = re.search(r'DL:(\d+(?:\.\d+)?[KMGT]?i?B/s)', line)
+                eta = re.search(r'ETA:? (\d+[hms]?)', line)
+                size = re.search(r'(\d+(?:\.\d+)?[KMGT]?i?B)/(\d+(?:\.\d+)?[KMGT]?i?B)', line)
+                msg = f"\r📊 [{bar}] {percent}%"
+                if size: msg += f" | {size.group(1)}/{size.group(2)}"
+                if speed: msg += f" | ⚡ {speed.group(1)}"
+                if eta: msg += f" | ⏱️ {eta.group(1)}"
+                print(msg.ljust(80), end='', flush=True)
+            except: pass
+        elif 'complete' in line.lower():
+            print(f"\n✅ Download complete!")
+    p.wait()
+    print()
+    path = Path(out_dir)
+    for f in path.rglob('*'):
+        if f.suffix in ['.mkv','.mp4','.avi','.mov','.ts']:
+            if f.parent != path: shutil.move(str(f), str(path/f.name))
+    return next((f for ext in ['.mkv','.mp4','.avi'] for f in path.glob(f'*{ext}')), None)
+
+def convert_video(inp, out, quality):
+    src_fps = get_fps(inp)
+    target_fps = 24 if src_fps > 24 else src_fps
+    fps_filter = f"fps={target_fps}," if src_fps > 24 else ""
+    width = 480 if quality == '480p' else 720
+    scale = f"{fps_filter}scale={width}:-2:force_original_aspect_ratio=decrease"
+    crf = 28 if quality == '480p' else 26
+    channels = get_channels(inp)
+    duration = get_duration(inp)
     
-    video_files = []
-    for ext in ['*.mkv', '*.mp4', '*.avi', '*.mov', '*.ts']:
-        video_files.extend(download_path.glob(ext))
+    print(f"\n{'='*50}\n🎬 CONVERTING\n{'='*50}")
+    print(f"📹 {Path(inp).name} → {Path(out).name}")
+    print(f"⚙️ {quality} | CRF:{crf} | {src_fps:.1f}→{target_fps:.1f}fps | {'🔊Stereo' if channels>2 else '🔊Original'}")
+    print(f"⏱️ Duration: {format_time(duration)}\n")
     
-    if video_files:
-        return video_files[0]
+    cmd = ['ffmpeg','-nostdin','-i',inp,'-c:v','libx265','-vf',scale,'-preset','medium','-crf',str(crf),'-pix_fmt','yuv420p','-map','0:v:0']
+    if channels > 2:
+        cmd.extend(['-c:a','aac','-b:a','96k','-af','aformat=channel_layouts=stereo'])
     else:
-        return None
+        cmd.extend(['-c:a','copy'])
+    cmd.extend(['-c:s','copy','-map','0:s?',out])
+    
+    p = subprocess.Popen(cmd, stderr=subprocess.PIPE, universal_newlines=True, bufsize=1)
+    frames = 0
+    for line in p.stderr:
+        if 'frame=' in line:
+            try:
+                fr = int(re.search(r'frame=\s*(\d+)', line).group(1))
+                if fr > frames:
+                    frames = fr
+                    progress = min(100, int(frames * 24 / duration)) if duration else 0
+                    bar = '█' * int(40*progress/100) + '░' * (40 - int(40*progress/100))
+                    speed = re.search(r'(\d+(?:\.\d+)?x)', line)
+                    time_elapsed = frames / 24 if src_fps else 0
+                    time_left = max(0, duration - time_elapsed) if duration else 0
+                    msg = f"\r📊 [{bar}] {progress}% | [{format_time(time_elapsed)}/{format_time(duration)}]"
+                    if speed: msg += f" | ⚡ {speed.group(1)}"
+                    if time_left: msg += f" | ⏱️ ETA: {format_time(time_left)}"
+                    print(msg.ljust(80), end='', flush=True)
+            except: pass
+    p.wait()
+    print()
+    if p.returncode == 0 and os.path.getsize(out):
+        in_mb = os.path.getsize(inp)/1048576
+        out_mb = os.path.getsize(out)/1048576
+        print(f"✅ Done! 💾 {out_mb:.1f}MB (saved {(in_mb-out_mb)/in_mb*100:.1f}%)\n")
+        return True
+    return False
 
 def main():
-    print(f"\n{'🚀'*25}")
-    print(f"   VIDEO CONVERSION TOOL")
-    print(f"{'🚀'*25}\n")
-    
+    print(f"\n{'🚀'*25}\n   VIDEO CONVERTER\n{'🚀'*25}")
     if len(sys.argv) < 3:
-        print("❌ Usage: python converter.py <magnet_link> <quality>")
-        print("   Quality: 480p or 720p")
+        print("Usage: python converter.py <magnet_link> <480p|720p>")
         sys.exit(1)
-    
-    magnet_link = sys.argv[1]
-    quality = sys.argv[2]
-    
-    download_dir = "./download"
-    os.makedirs(download_dir, exist_ok=True)
-    
-    # Download torrent
-    video_file = download_torrent(magnet_link, download_dir)
-    
-    if not video_file:
-        print("❌ Download failed! No video files found.")
-        sys.exit(1)
-    
-    print(f"📹 Found video: {video_file.name}\n")
-    
-    # Convert video
-    output_name = f"{video_file.stem}_{quality}.mkv"
-    output_path = Path(download_dir) / output_name
-    
-    if convert_video(str(video_file), str(output_path), quality):
-        # Remove original
-        video_file.unlink()
-        print(f"🎉 CONVERSION COMPLETE!")
-        print(f"📁 Output: {output_path}\n")
+    os.makedirs('./download', exist_ok=True)
+    video = download_torrent(sys.argv[1], './download')
+    if not video: print("❌ Download failed"); sys.exit(1)
+    out_path = Path('./download') / f"{video.stem}_{sys.argv[2]}.mkv"
+    if convert_video(str(video), str(out_path), sys.argv[2]):
+        video.unlink()
+        print(f"🎉 Complete! 📁 {out_path}")
     else:
-        print("❌ Conversion failed!")
-        sys.exit(1)
+        print("❌ Conversion failed")
 
 if __name__ == "__main__":
     main()
