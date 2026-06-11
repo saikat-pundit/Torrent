@@ -180,28 +180,53 @@ def download_torrent(magnet_link, output_dir):
         magnet_link
     ]
     
-    process = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, universal_newlines=True)
+    process = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, universal_newlines=True, bufsize=1)
     
-    # Monitor download progress
+    last_percent = 0
     for line in process.stderr:
-        if '#' in line and '%' in line:
-            # Extract progress percentage
-            if '(' in line and ')' in line:
-                percent_part = line.split('(')[1].split(')')[0] if '(' in line else ''
-                if '%' in percent_part:
-                    percent = percent_part.replace('%', '')
-                    if percent.isdigit():
-                        bar_length = 40
-                        filled = int(bar_length * int(percent) / 100)
-                        bar = '█' * filled + '░' * (bar_length - filled)
-                        print(f"\r📊 Download: [{bar}] {percent}%     ", end='', flush=True)
-        elif 'ETA' in line:
-            eta_part = line.split('ETA:')[1].strip().split(' ')[0] if 'ETA:' in line else ''
-            if eta_part:
-                print(f" ⏱️ ETA: {eta_part}", end='', flush=True)
+        # Look for download progress pattern like [#257e37 45MiB/5.8GiB(1%)]
+        if '(#' in line or '#' in line:
+            # Try to extract percentage
+            if '%' in line:
+                # Find percentage value
+                percent_start = line.find('(')
+                percent_end = line.find('%')
+                if percent_start != -1 and percent_end != -1:
+                    percent_str = line[percent_start+1:percent_end]
+                    # Extract numeric part
+                    import re
+                    percent_match = re.search(r'(\d+)', percent_str)
+                    if percent_match:
+                        percent = int(percent_match.group(1))
+                        if percent != last_percent and percent <= 100:
+                            last_percent = percent
+                            bar_length = 40
+                            filled = int(bar_length * percent / 100)
+                            bar = '█' * filled + '░' * (bar_length - filled)
+                            
+                            # Try to extract downloaded and total
+                            download_match = re.search(r'(\d+\.?\d*)([KMGT]?i?B)', line)
+                            total_match = re.search(r'/(\d+\.?\d*)([KMGT]?i?B)', line)
+                            
+                            if download_match and total_match:
+                                downloaded = download_match.group(0)
+                                total = total_match.group(0)
+                                print(f"\r📊 Download: [{bar}] {percent}% ({downloaded} / {total})     ", end='', flush=True)
+                            else:
+                                print(f"\r📊 Download: [{bar}] {percent}%     ", end='', flush=True)
+        
+        # Look for ETA
+        elif 'ETA' in line and '%' in line:
+            eta_match = re.search(r'ETA:? (\d+[hms]?)', line)
+            if eta_match:
+                eta = eta_match.group(1)
+                print(f" ⏱️ ETA: {eta}", end='', flush=True)
+        
+        # Check for download complete
+        elif 'Download complete' in line:
+            print(f"\n✅ Download completed!")
     
     process.wait()
-    print(f"\n✅ Download completed!\n")
     
     # Find downloaded video files
     download_path = Path(output_dir)
