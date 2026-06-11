@@ -1,2 +1,6 @@
 aria2=1.36.0
 ffmpeg=6.1.1
+ffmpeg-python>=0.2.0
+requests>=2.31.0
+tqdm>=4.66.0
+python-magic>=0.4.27
