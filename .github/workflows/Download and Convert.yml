@@ -16,41 +16,142 @@ on:
           - '480p'
           - '720p'
       zip_name:
-        description: 'Zip file name (letters, numbers, dots, underscores, hyphens only)'
+        description: 'Zip file name (without extension)'
         required: false
         type: string
         default: 'converted_videos'
-
-permissions:
-  contents: write
 
 jobs:
   download-and-convert:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y aria2 ffmpeg python3
-          pip install --user ffmpeg-python
+          sudo apt-get install -y aria2 ffmpeg
           
-      - name: Run converter
+      - name: Download torrent
         run: |
-          python3 converter.py "${{ inputs.magnet_link }}" "${{ inputs.quality }}"
+          aria2c --seed-time=0 \
+                 --max-connection-per-server=16 \
+                 --split=16 \
+                 --dir=./download \
+                 "${{ inputs.magnet_link }}"
+                 
+      - name: Find and convert video files
+        run: |
+          cd ./download
           
-      - name: Sanitize artifact name
-        id: sanitize
-        run: |
-          SAFE_NAME=$(echo "${{ inputs.zip_name }}" | sed 's/[^a-zA-Z0-9._-]/_/g')
-          echo "safe_name=$SAFE_NAME" >> $GITHUB_OUTPUT
+          if [ "${{ inputs.quality }}" = "480p" ]; then
+            SCALE_FILTER="scale=480:-2"
+            CRF_VALUE="28"
+            PRESET="medium"
+          else
+            SCALE_FILTER="scale=720:-2"
+            CRF_VALUE="26"
+            PRESET="medium"
+          fi
+          
+          echo "Flattening subdirectories..."
+          find . -mindepth 2 -type f -exec mv {} . \; 2>/dev/null
+          find . -type d -empty -delete 2>/dev/null
+          
+          echo "Looking for video files..."
+          find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" -o -iname "*.ts" -o -iname "*.mpeg" \) -print0 > /tmp/videos.list
+          
+          VIDEO_COUNT=$(find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" -o -iname "*.ts" -o -iname "*.mpeg" \) | wc -l)
+          
+          if [ $VIDEO_COUNT -eq 0 ]; then
+            echo "No video files found"
+            exit 1
+          fi
+          
+          echo "Found $VIDEO_COUNT video file(s)"
+          
+          declare -A USED_NAMES
+          
+          while IFS= read -r -d '' INPUT_VIDEO; do
+            BASENAME=$(basename "$INPUT_VIDEO")
+            BASENAME_WO_EXT="${BASENAME%.*}"
+            
+            CLEAN_NAME=$(echo "$BASENAME_WO_EXT" | sed 's/[:\/\\?*<>|"'\''\[\]{}()!@#$%^&+=→-]//g' | sed 's/  */ /g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr ' ' '.')
+            
+            if [ -z "$CLEAN_NAME" ]; then
+              CLEAN_NAME="video"
+            fi
+            
+            FINAL_NAME="$CLEAN_NAME"
+            COUNTER=1
+            while [[ -n "${USED_NAMES[$FINAL_NAME]}" ]]; do
+              FINAL_NAME="${CLEAN_NAME}_${COUNTER}"
+              COUNTER=$((COUNTER + 1))
+            done
+            USED_NAMES["$FINAL_NAME"]=1
+            
+            OUTPUT_FILE="${FINAL_NAME}_converted.mkv"
+            
+            echo "========================================="
+            echo "Converting: $BASENAME"
+            echo "Output: $OUTPUT_FILE"
+            echo "Quality: ${{ inputs.quality }}, CRF: $CRF_VALUE, Preset: $PRESET"
+            echo "========================================="
+            
+            # Get source FPS
+            SRC_FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 "$INPUT_VIDEO" | bc -l)
+            SRC_FPS_INT=$(printf "%.0f" "$SRC_FPS")
+            
+            # Only apply fps filter if source is above 24
+            if [ $(echo "$SRC_FPS > 24" | bc) -eq 1 ]; then
+              VF_FILTER="fps=24,$SCALE_FILTER"
+            else
+              VF_FILTER="$SCALE_FILTER"
+            fi
+            
+            # Get audio channel count
+            AUDIO_CHANNELS=$(ffprobe -v error -select_streams a:0 -show_entries stream=channels -of default=noprint_wrappers=1:nokey=1 "$INPUT_VIDEO")
+            
+            # Set audio options
+            if [ "$AUDIO_CHANNELS" -gt 2 ]; then
+              AUDIO_OPTS="-c:a aac -b:a 96k -ac 2"
+            else
+              AUDIO_OPTS="-c:a copy"
+            fi
+            
+            ffmpeg -nostdin -i "$INPUT_VIDEO" \
+              -c:v libx265 \
+              -vf "$VF_FILTER" \
+              -preset $PRESET \
+              -crf $CRF_VALUE \
+              -pix_fmt yuv420p \
+              $AUDIO_OPTS \
+              -c:s copy \
+              -map 0:v:0 \
+              -map 0:a:0 \
+              "$OUTPUT_FILE"
+            
+            if [ $? -eq 0 ] && [ -s "$OUTPUT_FILE" ]; then
+              echo "✅ Successfully converted: $OUTPUT_FILE"
+              rm -f "$INPUT_VIDEO"
+            else
+              echo "❌ Failed to convert: $BASENAME"
+              exit 1
+            fi
+            
+            echo ""
+          done < /tmp/videos.list
+          
+          rm -f /tmp/videos.list
+          
+          echo "========================================="
+          echo "Conversion complete!"
+          echo "Files in directory:"
+          ls -la
+          echo "========================================="
           
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.sanitize.outputs.safe_name }}
+          name: ${{ inputs.zip_name }}
           path: |
             ./download/*.mkv
             ./download/*.srt
