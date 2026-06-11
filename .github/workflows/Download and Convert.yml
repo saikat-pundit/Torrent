@@ -62,16 +62,22 @@ jobs:
             CRF_VALUE="28"
             PRESET="medium"
             QUALITY_NAME="240p"
+            COLOR_DEPTH="yuv420p"
+            X265_PARAMS=""
           elif [ "${{ inputs.quality }}" = "480p" ]; then
             SCALE_FILTER="scale=854:-2"
-            CRF_VALUE="22"
-            PRESET="medium"
+            CRF_VALUE="18"
+            PRESET="slow"
             QUALITY_NAME="480p"
+            COLOR_DEPTH="yuv420p10le"
+            X265_PARAMS="-x265-params \"psy-rd=2.0:psy-rdoq=5.0:aq-mode=3:deblock=-1,-1:no-sao=1\""
           else
             SCALE_FILTER="scale=1280:-2"
-            CRF_VALUE="22"
-            PRESET="medium"
+            CRF_VALUE="20"
+            PRESET="slow"
             QUALITY_NAME="720p"
+            COLOR_DEPTH="yuv420p10le"
+            X265_PARAMS="-x265-params \"psy-rd=2.0:psy-rdoq=5.0:aq-mode=3:deblock=-1,-1:no-sao=1\""
           fi
           
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -157,7 +163,7 @@ jobs:
             
             # Set audio options
             if [ "$AUDIO_CHANNELS" -gt 2 ]; then
-              AUDIO_OPTS="-c:a aac -b:a 96k -ac 2"
+              AUDIO_OPTS="-c:a aac -b:a 128k -ac 2"
             else
               AUDIO_OPTS="-c:a copy"
             fi
@@ -168,7 +174,8 @@ jobs:
               -vf "$VF_FILTER" \
               -preset $PRESET \
               -crf $CRF_VALUE \
-              -pix_fmt yuv420p \
+              -pix_fmt $COLOR_DEPTH \
+              $X265_PARAMS \
               $AUDIO_OPTS \
               -c:s copy \
               -map 0:v:0 \
@@ -199,7 +206,6 @@ jobs:
                     
                     # Calculate ETA
                     if [[ $line =~ bitrate=([0-9.]+)kbits/s ]] && [ $TOTAL_SECS -gt 0 ]; then
-                      # More accurate ETA using bitrate
                       REMAINING_SECS=$(echo "scale=0; ($DURATION - $TOTAL_SECS) / ${SPEED%x}" | bc 2>/dev/null)
                       if [ -n "$REMAINING_SECS" ] && [ "$REMAINING_SECS" -gt 0 ]; then
                         REMAINING_MIN=$((REMAINING_SECS / 60))
