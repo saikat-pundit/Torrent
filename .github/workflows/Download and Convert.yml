@@ -58,12 +58,12 @@ jobs:
           
           if [ "${{ inputs.quality }}" = "480p" ]; then
             SCALE_FILTER="scale=480:-2"
-            CRF_VALUE="24"
+            CRF_VALUE="22"
             PRESET="medium"
             QUALITY_NAME="480p"
           else
             SCALE_FILTER="scale=720:-2"
-            CRF_VALUE="24"
+            CRF_VALUE="22"
             PRESET="medium"
             QUALITY_NAME="720p"
           fi
