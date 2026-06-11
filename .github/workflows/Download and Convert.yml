@@ -20,6 +20,17 @@ on:
         required: false
         type: string
         default: 'converted_videos'
+      upload_target:
+        description: 'Upload to'
+        required: true
+        type: choice
+        default: 'artifacts'
+        options:
+          - 'artifacts'
+          - 'release'
+
+permissions:
+  contents: write
 
 jobs:
   download-and-convert:
@@ -29,12 +40,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y aria2 ffmpeg python3
+          pip install -r requirements.txt
           
       - name: Download and convert with Python script
         run: |
           python3 converter.py "${{ inputs.magnet_link }}" "${{ inputs.quality }}"
           
-      - name: Upload artifacts
+      - name: Upload to Artifacts
+        if: inputs.upload_target == 'artifacts'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.zip_name }}
@@ -45,3 +58,19 @@ jobs:
             ./download/*.ssa
             ./download/*.sub
           if-no-files-found: warn
+          
+      - name: Create GitHub Release
+        if: inputs.upload_target == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.run_id }}
+          name: ${{ inputs.zip_name }}
+          files: |
+            ./download/*.mkv
+            ./download/*.srt
+            ./download/*.ass
+            ./download/*.ssa
+            ./download/*.sub
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
