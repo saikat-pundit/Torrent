@@ -58,15 +58,3 @@ jobs:
             ./download/*.ssa
             ./download/*.sub
           if-no-files-found: warn
-          
-      - name: Create GitHub Release
-        if: always()
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.run_id }}
-          name: ${{ steps.sanitize.outputs.safe_name }}
-          files: |
-            ./download/*.mkv
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
