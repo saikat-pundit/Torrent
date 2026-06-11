@@ -16,18 +16,10 @@ on:
           - '480p'
           - '720p'
       zip_name:
-        description: 'Zip file name (without extension)'
+        description: 'Zip file name (letters, numbers, dots, underscores, hyphens only)'
         required: false
         type: string
         default: 'converted_videos'
-      upload_target:
-        description: 'Upload to'
-        required: true
-        type: choice
-        default: 'artifacts'
-        options:
-          - 'artifacts'
-          - 'release'
 
 permissions:
   contents: write
@@ -43,17 +35,22 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y aria2 ffmpeg python3
-          pip install -r requirements.txt
+          pip install --user ffmpeg-python
           
-      - name: Download and convert with Python script
+      - name: Run converter
         run: |
           python3 converter.py "${{ inputs.magnet_link }}" "${{ inputs.quality }}"
           
-      - name: Upload to Artifacts
-        if: inputs.upload_target == 'artifacts'
+      - name: Sanitize artifact name
+        id: sanitize
+        run: |
+          SAFE_NAME=$(echo "${{ inputs.zip_name }}" | sed 's/[^a-zA-Z0-9._-]/_/g')
+          echo "safe_name=$SAFE_NAME" >> $GITHUB_OUTPUT
+          
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.zip_name }}
+          name: ${{ steps.sanitize.outputs.safe_name }}
           path: |
             ./download/*.mkv
             ./download/*.srt
@@ -63,17 +60,13 @@ jobs:
           if-no-files-found: warn
           
       - name: Create GitHub Release
-        if: inputs.upload_target == 'release'
+        if: always()
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.run_id }}
-          name: ${{ inputs.zip_name }}
+          name: ${{ steps.sanitize.outputs.safe_name }}
           files: |
             ./download/*.mkv
-            ./download/*.srt
-            ./download/*.ass
-            ./download/*.ssa
-            ./download/*.sub
-          generate_release_notes: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
