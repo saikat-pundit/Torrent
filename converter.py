@@ -61,10 +61,10 @@ def convert_video(input_file, output_file, quality):
     
   # Set scaling based on quality
     if quality == "480p":
-        scale_filter = "scale=854:-2:force_original_aspect_ratio=decrease"
+        scale_filter = "scale=480:-2:force_original_aspect_ratio=decrease"
         crf = 28
     else:
-        scale_filter = "scale=1280:-2:force_original_aspect_ratio=decrease"
+        scale_filter = "scale=720:-2:force_original_aspect_ratio=decrease"
         crf = 26
     
     # Combine filters
