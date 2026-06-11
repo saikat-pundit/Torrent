@@ -13,6 +13,7 @@ on:
         type: choice
         default: '480p'
         options:
+          - '240p'
           - '480p'
           - '720p'
       zip_name:
@@ -56,13 +57,18 @@ jobs:
         run: |
           cd ./download
           
-          if [ "${{ inputs.quality }}" = "480p" ]; then
-            SCALE_FILTER="scale=480:-2"
+          if [ "${{ inputs.quality }}" = "240p" ]; then
+            SCALE_FILTER="scale=426:-2"
+            CRF_VALUE="28"
+            PRESET="medium"
+            QUALITY_NAME="240p"
+          elif [ "${{ inputs.quality }}" = "480p" ]; then
+            SCALE_FILTER="scale=854:-2"
             CRF_VALUE="22"
             PRESET="medium"
             QUALITY_NAME="480p"
           else
-            SCALE_FILTER="scale=720:-2"
+            SCALE_FILTER="scale=1280:-2"
             CRF_VALUE="22"
             PRESET="medium"
             QUALITY_NAME="720p"
