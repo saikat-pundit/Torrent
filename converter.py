@@ -57,7 +57,7 @@ def download_torrent(magnet, out_dir):
 def convert_video(inp, out, quality):
     src_fps = get_fps(inp)
     width = 480 if quality == '480p' else 720
-    scale = f"scale={width}:-2:force_original_aspect_ratio=decrease"
+    scale = f"scale={width}:trunc(ih/2)*2:force_original_aspect_ratio=decrease"
     crf = 28 if quality == '480p' else 26
     channels = get_channels(inp)
     duration = get_duration(inp)
