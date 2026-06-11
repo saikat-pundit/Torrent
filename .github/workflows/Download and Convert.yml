@@ -28,16 +28,30 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y aria2 ffmpeg
+          sudo apt-get install -y aria2 ffmpeg bc
           
-      - name: Download torrent
+      - name: Download torrent with progress
         run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🎯 STARTING TORRENT DOWNLOAD"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
           aria2c --seed-time=0 \
                  --max-connection-per-server=16 \
                  --split=16 \
                  --dir=./download \
+                 --console-log-level=notice \
+                 --summary-interval=1 \
+                 --show-console-readout=true \
+                 --human-readable=true \
                  "${{ inputs.magnet_link }}"
-                 
+          
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ DOWNLOAD COMPLETE"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          
       - name: Find and convert video files
         run: |
           cd ./download
@@ -46,31 +60,46 @@ jobs:
             SCALE_FILTER="scale=480:-2"
             CRF_VALUE="24"
             PRESET="medium"
+            QUALITY_NAME="480p"
           else
             SCALE_FILTER="scale=720:-2"
             CRF_VALUE="24"
             PRESET="medium"
+            QUALITY_NAME="720p"
           fi
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "📁 PREPARING FILES"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           echo "Flattening subdirectories..."
           find . -mindepth 2 -type f -exec mv {} . \; 2>/dev/null
           find . -type d -empty -delete 2>/dev/null
           
-          echo "Looking for video files..."
+          echo "Scanning for video files..."
           find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" -o -iname "*.ts" -o -iname "*.mpeg" \) -print0 > /tmp/videos.list
           
           VIDEO_COUNT=$(find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" -o -iname "*.ts" -o -iname "*.mpeg" \) | wc -l)
           
           if [ $VIDEO_COUNT -eq 0 ]; then
-            echo "No video files found"
+            echo "❌ No video files found!"
             exit 1
           fi
           
-          echo "Found $VIDEO_COUNT video file(s)"
+          echo "✅ Found $VIDEO_COUNT video file(s)"
+          echo ""
           
           declare -A USED_NAMES
+          CURRENT_FILE=0
+          
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🎬 STARTING VIDEO CONVERSION"
+          echo "📊 Quality: $QUALITY_NAME | CRF: $CRF_VALUE | Preset: $PRESET"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
           
           while IFS= read -r -d '' INPUT_VIDEO; do
+            CURRENT_FILE=$((CURRENT_FILE + 1))
             BASENAME=$(basename "$INPUT_VIDEO")
             BASENAME_WO_EXT="${BASENAME%.*}"
             
@@ -90,11 +119,21 @@ jobs:
             
             OUTPUT_FILE="${FINAL_NAME}_converted.mkv"
             
-            echo "========================================="
-            echo "Converting: $BASENAME"
-            echo "Output: $OUTPUT_FILE"
-            echo "Quality: ${{ inputs.quality }}, CRF: $CRF_VALUE, Preset: $PRESET"
-            echo "========================================="
+            # Get file info
+            ORIG_SIZE=$(du -h "$INPUT_VIDEO" | cut -f1)
+            DURATION=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$INPUT_VIDEO" | cut -d. -f1)
+            DURATION_MIN=$((DURATION / 60))
+            DURATION_SEC=$((DURATION % 60))
+            
+            echo "┌────────────────────────────────────────────┐"
+            printf "│ 📹 [%d/%d] Processing: %-24s │\n" "$CURRENT_FILE" "$VIDEO_COUNT" "${BASENAME:0:24}"
+            echo "├────────────────────────────────────────────┤"
+            printf "│ 💾 Original size: %-28s │\n" "$ORIG_SIZE"
+            printf "│ ⏱️  Duration: %d min %d sec%-17s │\n" "$DURATION_MIN" "$DURATION_SEC" ""
+            printf "│ 🎯 Target quality: %-26s │\n" "$QUALITY_NAME"
+            echo "├────────────────────────────────────────────┤"
+            echo "│ 🔄 Conversion in progress...                │"
+            echo "└────────────────────────────────────────────┘"
             
             # Get source FPS
             SRC_FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 "$INPUT_VIDEO" | bc -l)
@@ -117,6 +156,7 @@ jobs:
               AUDIO_OPTS="-c:a copy"
             fi
             
+            # Run conversion with progress
             ffmpeg -nostdin -i "$INPUT_VIDEO" \
               -c:v libx265 \
               -vf "$VF_FILTER" \
@@ -127,26 +167,51 @@ jobs:
               -c:s copy \
               -map 0:v:0 \
               -map 0:a:0 \
-              "$OUTPUT_FILE"
+              -progress /tmp/progress.log \
+              "$OUTPUT_FILE" 2>&1 | \
+              while IFS= read -r line; do
+                if [[ $line =~ out_time_ms=([0-9]+) ]]; then
+                  MS="${BASH_REMATCH[1]}"
+                  SECS=$(echo "scale=1; $MS / 1000000" | bc)
+                  PERCENT=$(echo "scale=1; ($SECS / $DURATION) * 100" | bc)
+                  printf "\r│ 📊 Progress: %5.1f%% complete %-18s │" "$PERCENT" ""
+                fi
+              done
+            
+            echo ""
             
             if [ $? -eq 0 ] && [ -s "$OUTPUT_FILE" ]; then
-              echo "✅ Successfully converted: $OUTPUT_FILE"
+              NEW_SIZE=$(du -h "$OUTPUT_FILE" | cut -f1)
+              echo "┌────────────────────────────────────────────┐"
+              echo "│ ✅ CONVERSION SUCCESSFUL!                   │"
+              echo "├────────────────────────────────────────────┤"
+              printf "│ 📁 Output: %-33s │\n" "${OUTPUT_FILE:0:33}"
+              printf "│ 💾 New size: %-30s │\n" "$NEW_SIZE"
+              echo "└────────────────────────────────────────────┘"
+              echo ""
               rm -f "$INPUT_VIDEO"
             else
-              echo "❌ Failed to convert: $BASENAME"
+              echo "┌────────────────────────────────────────────┐"
+              echo "│ ❌ CONVERSION FAILED!                       │"
+              echo "├────────────────────────────────────────────┤"
+              printf "│ 📹 File: %-36s │\n" "${BASENAME:0:36}"
+              echo "└────────────────────────────────────────────┘"
+              echo ""
               exit 1
             fi
             
-            echo ""
           done < /tmp/videos.list
           
+          rm -f /tmp/progress.log
           rm -f /tmp/videos.list
           
-          echo "========================================="
-          echo "Conversion complete!"
-          echo "Files in directory:"
-          ls -la
-          echo "========================================="
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🎉 ALL CONVERSIONS COMPLETE!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+          echo "📊 Final files:"
+          ls -lh *.mkv 2>/dev/null | awk '{print "  • " $9 " (" $5 ")"}'
+          echo ""
           
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
