@@ -168,9 +168,9 @@ jobs:
               AUDIO_OPTS="-c:a copy"
             fi
             
-            # Run conversion with native FFmpeg output (reliable progress)
+            # Run conversion with FULL FFmpeg output (shows frame, fps, size, time, bitrate, speed)
             echo ""
-            echo "🔄 Running FFmpeg conversion..."
+            echo "🔄 Running FFmpeg conversion with real-time stats..."
             echo ""
             
             ffmpeg -nostdin -i "$INPUT_VIDEO" \
@@ -185,14 +185,17 @@ jobs:
               -map 0:v:0 \
               -map 0:a:0 \
               -stats \
-              "$OUTPUT_FILE" 2>&1 | while IFS= read -r line; do
-                if [[ "$line" =~ frame=.*speed= ]]; then
-                  echo "   $line"
+              "$OUTPUT_FILE" 2>&1 | grep --line-buffered -E "(frame=|size=|time=|bitrate=|speed=)" | while IFS= read -r line; do
+                # Clean up the line and print it
+                if [[ "$line" =~ (frame=.*speed=.*) ]]; then
+                  echo "   ${BASH_REMATCH[1]}"
                 fi
               done
             
             FFMPEG_EXIT_CODE=${PIPESTATUS[0]}
             
+            echo ""
+            echo "✅ FFmpeg process completed with exit code: $FFMPEG_EXIT_CODE"
             echo ""
             
             if [ $FFMPEG_EXIT_CODE -eq 0 ] && [ -s "$OUTPUT_FILE" ]; then
