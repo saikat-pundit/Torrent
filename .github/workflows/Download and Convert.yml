@@ -66,14 +66,14 @@ jobs:
             X265_PARAMS=""
           elif [ "${{ inputs.quality }}" = "480p" ]; then
             SCALE_FILTER="scale=854:-2"
-            CRF_VALUE="19"
+            CRF_VALUE="24"
             PRESET="medium"
             QUALITY_NAME="480p"
             COLOR_DEPTH="yuv420p10le"
             X265_PARAMS="-x265-params \"psy-rd=2.0:psy-rdoq=5.0:aq-mode=3:deblock=-1,-1:no-sao=1\""
           else
             SCALE_FILTER="scale=1280:-2"
-            CRF_VALUE="18"
+            CRF_VALUE="23"
             PRESET="medium"
             QUALITY_NAME="720p"
             COLOR_DEPTH="yuv420p10le"
