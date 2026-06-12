@@ -168,11 +168,12 @@ jobs:
               AUDIO_OPTS="-c:a copy"
             fi
             
-            # Run conversion with FULL FFmpeg output (shows frame, fps, size, time, bitrate, speed)
+            # Run conversion with direct FFmpeg output (no filtering, show everything)
             echo ""
             echo "🔄 Running FFmpeg conversion with real-time stats..."
             echo ""
             
+            # Run FFmpeg and show ALL output directly
             ffmpeg -nostdin -i "$INPUT_VIDEO" \
               -c:v libx265 \
               -vf "$VF_FILTER" \
@@ -184,18 +185,19 @@ jobs:
               -c:s copy \
               -map 0:v:0 \
               -map 0:a:0 \
+              -progress /tmp/progress.txt \
               -stats \
-              "$OUTPUT_FILE" 2>&1 | grep --line-buffered -E "(frame=|size=|time=|bitrate=|speed=)" | while IFS= read -r line; do
-                # Clean up the line and print it
-                if [[ "$line" =~ (frame=.*speed=.*) ]]; then
-                  echo "   ${BASH_REMATCH[1]}"
-                fi
-              done
+              "$OUTPUT_FILE" 2>&1 | tee /tmp/ffmpeg_output.txt
             
             FFMPEG_EXIT_CODE=${PIPESTATUS[0]}
             
             echo ""
             echo "✅ FFmpeg process completed with exit code: $FFMPEG_EXIT_CODE"
+            echo ""
+            
+            # Show the last few lines of FFmpeg output for verification
+            echo "📝 Last few lines of FFmpeg output:"
+            tail -n 10 /tmp/ffmpeg_output.txt | sed 's/^/   /'
             echo ""
             
             if [ $FFMPEG_EXIT_CODE -eq 0 ] && [ -s "$OUTPUT_FILE" ]; then
@@ -215,12 +217,16 @@ jobs:
               printf "│ 📹 File: %-57s │\n" "${BASENAME:0:57}"
               echo "└──────────────────────────────────────────────────────────────────┘"
               echo ""
+              echo "❌ FFmpeg error details:"
+              cat /tmp/ffmpeg_output.txt
               exit 1
             fi
             
           done < /tmp/videos.list
           
           rm -f /tmp/videos.list
+          rm -f /tmp/ffmpeg_output.txt
+          rm -f /tmp/progress.txt
           
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "🎉 ALL CONVERSIONS COMPLETE!"
