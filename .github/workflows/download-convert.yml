@@ -1,4 +1,4 @@
-name: Download and Convert Video
+name: External Video Download Link
 
 on:
   workflow_dispatch:
