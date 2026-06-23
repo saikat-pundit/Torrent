@@ -7,7 +7,7 @@ on:
         description: 'Video URL to download'
         required: true
         type: string
-        default: 'https://video-downloads.googleusercontent.com/ADGPM2nt8uyDYnBHdRW4exO3y2SJTmu76zM5j0FuFlvIhggklvzhlTz9O1qnjXQf3NdE6i42SM9fYtDqSeImx86YhNTRACqfvM1LkYne_lFpayIeJ_lQdZwbyLSSqa-mzK4JQgOPeGJE0F2DlvhimHTFjlevsyuSCCSmevVU1vbuMjcl4O9EatwRJa6b6ikef587CpkxWaslxzwQEdWDSq6xytcOZ2TPM8y6gGTxbfGv78gv57lVHMc'
+        default: 'Paste Your Link'
       output_filename:
         description: 'Output filename (without extension)'
         required: true
