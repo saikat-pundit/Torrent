@@ -69,7 +69,6 @@ jobs:
       with:
         name: ${{ github.event.inputs.output_filename }}-${{ github.event.inputs.quality }}
         path: ${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.mp4
-        retention-days: 7
     
     - name: Create Release
       if: ${{ github.event.inputs.upload_to == 'release' }}
@@ -85,11 +84,10 @@ jobs:
     
     - name: Upload to Release
       if: ${{ github.event.inputs.upload_to == 'release' }}
-      uses: actions/upload-release-asset@v1
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.run_number }}
+        files: |
+          ${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.mp4
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.mp4
-        asset_name: ${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.mp4
-        asset_content_type: video/mp4
