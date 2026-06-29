@@ -86,7 +86,7 @@ jobs:
       if: ${{ github.event.inputs.upload_to == 'release' }}
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ github.run_number }}
+        tag_name: Movie
         files: |
           ${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.mp4
       env:
