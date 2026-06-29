@@ -1,5 +1,6 @@
 name: External Video Download Link
-
+permissions:
+  contents: write
 on:
   workflow_dispatch:
     inputs:
