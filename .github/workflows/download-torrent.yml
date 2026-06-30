@@ -1,4 +1,4 @@
-name: Download
+name: Download Torrent File
 
 on:
   workflow_dispatch:
