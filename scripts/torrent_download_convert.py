@@ -34,18 +34,21 @@ def install_dependencies():
     run_command("sudo apt-get install -y aria2 ffmpeg bc")
 
 
-def download_torrent(magnet_link):
+def download_torrent(magnet_link, download_dir):
     """Download torrent using aria2c."""
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("🎯 STARTING TORRENT DOWNLOAD")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    
+    # Create download directory if it doesn't exist
+    os.makedirs(download_dir, exist_ok=True)
     
     cmd = [
         "aria2c",
         "--seed-time=0",
         "--max-connection-per-server=16",
         "--split=16",
-        "--dir=./download",
+        f"--dir={download_dir}",
         "--console-log-level=notice",
         "--summary-interval=1",
         "--show-console-readout=true",
@@ -98,38 +101,42 @@ def get_quality_params(quality):
     return params.get(quality, params["480p"])
 
 
-def flatten_directories():
+def flatten_directories(download_dir):
     """Move all files from subdirectories to current directory."""
     print("Flattening subdirectories...")
     
-    download_dir = Path("./download")
-    for file in download_dir.rglob("*"):
-        if file.is_file() and file.parent != download_dir:
-            dest = download_dir / file.name
+    download_path = Path(download_dir)
+    for file in download_path.rglob("*"):
+        if file.is_file() and file.parent != download_path:
+            dest = download_path / file.name
             counter = 1
             while dest.exists():
-                dest = download_dir / f"{file.stem}_{counter}{file.suffix}"
+                dest = download_path / f"{file.stem}_{counter}{file.suffix}"
                 counter += 1
             shutil.move(str(file), str(dest))
     
     # Remove empty directories
-    for dir_path in sorted(download_dir.rglob("*"), reverse=True):
-        if dir_path.is_dir() and dir_path != download_dir:
+    for dir_path in sorted(download_path.rglob("*"), reverse=True):
+        if dir_path.is_dir() and dir_path != download_path:
             try:
                 dir_path.rmdir()
             except OSError:
                 pass
 
 
-def find_video_files():
+def find_video_files(download_dir):
     """Find all video files in download directory."""
     video_extensions = {".mp4", ".mkv", ".avi", ".mov", ".flv", 
                        ".webm", ".wmv", ".m4v", ".ts", ".mpeg"}
     
     video_files = []
-    download_dir = Path("./download")
+    download_path = Path(download_dir)
     
-    for file in download_dir.iterdir():
+    if not download_path.exists():
+        print(f"❌ Download directory not found: {download_dir}")
+        return video_files
+    
+    for file in download_path.iterdir():
         if file.is_file() and file.suffix.lower() in video_extensions:
             video_files.append(file)
     
@@ -281,12 +288,12 @@ def main():
     # Install dependencies
     install_dependencies()
     
-    # Download torrent
-    download_torrent(magnet_link)
+    # Define download directory (absolute path)
+    workspace_dir = os.getcwd()
+    download_dir = os.path.join(workspace_dir, "download")
     
-    # Create download directory if it doesn't exist
-    os.makedirs("./download", exist_ok=True)
-    os.chdir("./download")
+    # Download torrent
+    download_torrent(magnet_link, download_dir)
     
     # Get quality parameters
     quality_params = get_quality_params(quality)
@@ -296,11 +303,14 @@ def main():
     print("📁 PREPARING FILES")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     
-    flatten_directories()
-    video_files = find_video_files()
+    flatten_directories(download_dir)
+    video_files = find_video_files(download_dir)
     
     if not video_files:
         print("❌ No video files found!")
+        print(f"Contents of {download_dir}:")
+        for item in Path(download_dir).iterdir():
+            print(f"  - {item.name}")
         sys.exit(1)
     
     print(f"✅ Found {len(video_files)} video file(s)")
@@ -332,7 +342,7 @@ def main():
             counter += 1
         used_names[final_name] = True
         
-        output_file = f"{final_name}_converted.mkv"
+        output_file = input_video.parent / f"{final_name}_converted.mkv"
         
         # Get file info
         orig_size = format_size(input_video.stat().st_size)
@@ -365,12 +375,12 @@ def main():
                 print(f"   {line}")
         print()
         
-        if exit_code == 0 and Path(output_file).exists() and Path(output_file).stat().st_size > 0:
-            new_size = format_size(Path(output_file).stat().st_size)
+        if exit_code == 0 and output_file.exists() and output_file.stat().st_size > 0:
+            new_size = format_size(output_file.stat().st_size)
             print("┌──────────────────────────────────────────────────────────────────┐")
             print("│ ✅ CONVERSION SUCCESSFUL!                                         │")
             print("├──────────────────────────────────────────────────────────────────┤")
-            print(f"│ 📁 Output: {output_file[:55]:<55} │")
+            print(f"│ 📁 Output: {output_file.name[:55]:<55} │")
             print(f"│ 💾 New size: {new_size:<52} │")
             print("└──────────────────────────────────────────────────────────────────┘")
             print()
@@ -396,23 +406,16 @@ def main():
             pass
     
     # Final summary
-    os.chdir("..")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("🎉 ALL CONVERSIONS COMPLETE!")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print()
     print("📊 Final files:")
     
-    for file in Path("./download").glob("*.mkv"):
+    for file in Path(download_dir).glob("*.mkv"):
         size = format_size(file.stat().st_size)
         print(f"  • {file.name} ({size})")
     print()
-    
-    # Set output variables for GitHub Actions
-    if 'GITHUB_OUTPUT' in os.environ:
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-            f.write(f"zip_name={zip_name}\n")
-            f.write(f"upload_to={upload_to}\n")
 
 
 if __name__ == "__main__":
