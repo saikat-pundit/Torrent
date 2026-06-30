@@ -21,222 +21,40 @@ on:
         required: false
         type: string
         default: 'converted_videos'
+      upload_to:
+        description: 'Upload destination'
+        required: true
+        type: choice
+        default: 'artifacts'
+        options:
+          - 'artifacts'
+          - 'release'
 
 jobs:
   download-and-convert:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
     steps:
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y aria2 ffmpeg bc
-          
-      - name: Download torrent with progress
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🎯 STARTING TORRENT DOWNLOAD"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          
-          aria2c --seed-time=0 \
-                 --max-connection-per-server=16 \
-                 --split=16 \
-                 --dir=./download \
-                 --console-log-level=notice \
-                 --summary-interval=1 \
-                 --show-console-readout=true \
-                 --human-readable=true \
-                 "${{ inputs.magnet_link }}"
-          
-          echo ""
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ DOWNLOAD COMPLETE"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
-          
-      - name: Find and convert video files
-        run: |
-          cd ./download
-          
-          if [ "${{ inputs.quality }}" = "240p" ]; then
-            SCALE_FILTER="scale=426:-2"
-            CRF_VALUE="28"
-            PRESET="medium"
-            QUALITY_NAME="240p"
-            COLOR_DEPTH="yuv420p"
-            X265_PARAMS=""
-          elif [ "${{ inputs.quality }}" = "480p" ]; then
-            SCALE_FILTER="scale=854:-2"
-            CRF_VALUE="24"
-            PRESET="medium"
-            QUALITY_NAME="480p"
-            COLOR_DEPTH="yuv420p10le"
-            X265_PARAMS="-x265-params \"psy-rd=2.0:psy-rdoq=5.0:aq-mode=3:deblock=-1,-1:no-sao=1\""
-          else
-            SCALE_FILTER="scale=1280:-2"
-            CRF_VALUE="23"
-            PRESET="medium"
-            QUALITY_NAME="720p"
-            COLOR_DEPTH="yuv420p10le"
-            X265_PARAMS="-x265-params \"psy-rd=2.0:psy-rdoq=5.0:aq-mode=3:deblock=-1,-1:no-sao=1\""
-          fi
-          
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📁 PREPARING FILES"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          
-          echo "Flattening subdirectories..."
-          find . -mindepth 2 -type f -exec mv {} . \; 2>/dev/null
-          find . -type d -empty -delete 2>/dev/null
-          
-          echo "Scanning for video files..."
-          find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" -o -iname "*.ts" -o -iname "*.mpeg" \) -print0 > /tmp/videos.list
-          
-          VIDEO_COUNT=$(find . -maxdepth 1 -type f \( -iname "*.mp4" -o -iname "*.mkv" -o -iname "*.avi" -o -iname "*.mov" -o -iname "*.flv" -o -iname "*.webm" -o -iname "*.wmv" -o -iname "*.m4v" -o -iname "*.ts" -o -iname "*.mpeg" \) | wc -l)
-          
-          if [ $VIDEO_COUNT -eq 0 ]; then
-            echo "❌ No video files found!"
-            exit 1
-          fi
-          
-          echo "✅ Found $VIDEO_COUNT video file(s)"
-          echo ""
-          
-          declare -A USED_NAMES
-          CURRENT_FILE=0
-          
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🎬 STARTING VIDEO CONVERSION"
-          echo "📊 Quality: $QUALITY_NAME | CRF: $CRF_VALUE | Preset: $PRESET"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
-          
-          while IFS= read -r -d '' INPUT_VIDEO; do
-            CURRENT_FILE=$((CURRENT_FILE + 1))
-            BASENAME=$(basename "$INPUT_VIDEO")
-            BASENAME_WO_EXT="${BASENAME%.*}"
-            
-            CLEAN_NAME=$(echo "$BASENAME_WO_EXT" | sed 's/[:\/\\?*<>|"'\''\[\]{}()!@#$%^&+=→-]//g' | sed 's/  */ /g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr ' ' '.')
-            
-            if [ -z "$CLEAN_NAME" ]; then
-              CLEAN_NAME="video"
-            fi
-            
-            FINAL_NAME="$CLEAN_NAME"
-            COUNTER=1
-            while [[ -n "${USED_NAMES[$FINAL_NAME]}" ]]; do
-              FINAL_NAME="${CLEAN_NAME}_${COUNTER}"
-              COUNTER=$((COUNTER + 1))
-            done
-            USED_NAMES["$FINAL_NAME"]=1
-            
-            OUTPUT_FILE="${FINAL_NAME}_converted.mkv"
-            
-            # Get file info
-            ORIG_SIZE=$(du -h "$INPUT_VIDEO" | cut -f1)
-            DURATION=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$INPUT_VIDEO" | cut -d. -f1)
-            DURATION_MIN=$((DURATION / 60))
-            DURATION_SEC=$((DURATION % 60))
-            
-            echo "┌──────────────────────────────────────────────────────────────────┐"
-            printf "│ 📹 [%d/%d] Processing: %-54s │\n" "$CURRENT_FILE" "$VIDEO_COUNT" "${BASENAME:0:54}"
-            echo "├──────────────────────────────────────────────────────────────────┤"
-            printf "│ 💾 Original size: %-52s │\n" "$ORIG_SIZE"
-            printf "│ ⏱️  Duration: %d min %d sec%-41s │\n" "$DURATION_MIN" "$DURATION_SEC" ""
-            printf "│ 🎯 Target quality: %-50s │\n" "$QUALITY_NAME"
-            echo "├──────────────────────────────────────────────────────────────────┤"
-            echo "│ 🔄 Conversion in progress...                                      │"
-            echo "└──────────────────────────────────────────────────────────────────┘"
-            
-            # Get source FPS
-            SRC_FPS=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 "$INPUT_VIDEO" | bc -l)
-            SRC_FPS_INT=$(printf "%.0f" "$SRC_FPS")
-            
-            # Only apply fps filter if source is above 24
-            if [ $(echo "$SRC_FPS > 24" | bc) -eq 1 ]; then
-              VF_FILTER="fps=24,$SCALE_FILTER"
-            else
-              VF_FILTER="$SCALE_FILTER"
-            fi
-            
-            # Get audio channel count
-            AUDIO_CHANNELS=$(ffprobe -v error -select_streams a:0 -show_entries stream=channels -of default=noprint_wrappers=1:nokey=1 "$INPUT_VIDEO")
-            
-            # Set audio options
-            if [ "$AUDIO_CHANNELS" -gt 2 ]; then
-              AUDIO_OPTS="-c:a aac -b:a 128k -ac 2"
-            else
-              AUDIO_OPTS="-c:a copy"
-            fi
-            
-            # Run conversion with direct FFmpeg output (no filtering, show everything)
-            echo ""
-            echo "🔄 Running FFmpeg conversion with real-time stats..."
-            echo ""
-            
-            # Run FFmpeg and show ALL output directly
-            ffmpeg -nostdin -i "$INPUT_VIDEO" \
-              -c:v libx265 \
-              -vf "$VF_FILTER" \
-              -preset $PRESET \
-              -crf $CRF_VALUE \
-              -pix_fmt $COLOR_DEPTH \
-              $X265_PARAMS \
-              $AUDIO_OPTS \
-              -c:s copy \
-              -map 0:v:0 \
-              -map 0:a:0 \
-              -progress /tmp/progress.txt \
-              -stats \
-              "$OUTPUT_FILE" 2>&1 | tee /tmp/ffmpeg_output.txt
-            
-            FFMPEG_EXIT_CODE=${PIPESTATUS[0]}
-            
-            echo ""
-            echo "✅ FFmpeg process completed with exit code: $FFMPEG_EXIT_CODE"
-            echo ""
-            
-            # Show the last few lines of FFmpeg output for verification
-            echo "📝 Last few lines of FFmpeg output:"
-            tail -n 10 /tmp/ffmpeg_output.txt | sed 's/^/   /'
-            echo ""
-            
-            if [ $FFMPEG_EXIT_CODE -eq 0 ] && [ -s "$OUTPUT_FILE" ]; then
-              NEW_SIZE=$(du -h "$OUTPUT_FILE" | cut -f1)
-              echo "┌──────────────────────────────────────────────────────────────────┐"
-              echo "│ ✅ CONVERSION SUCCESSFUL!                                         │"
-              echo "├──────────────────────────────────────────────────────────────────┤"
-              printf "│ 📁 Output: %-55s │\n" "${OUTPUT_FILE:0:55}"
-              printf "│ 💾 New size: %-52s │\n" "$NEW_SIZE"
-              echo "└──────────────────────────────────────────────────────────────────┘"
-              echo ""
-              rm -f "$INPUT_VIDEO"
-            else
-              echo "┌──────────────────────────────────────────────────────────────────┐"
-              echo "│ ❌ CONVERSION FAILED!                                             │"
-              echo "├──────────────────────────────────────────────────────────────────┤"
-              printf "│ 📹 File: %-57s │\n" "${BASENAME:0:57}"
-              echo "└──────────────────────────────────────────────────────────────────┘"
-              echo ""
-              echo "❌ FFmpeg error details:"
-              cat /tmp/ffmpeg_output.txt
-              exit 1
-            fi
-            
-          done < /tmp/videos.list
-          
-          rm -f /tmp/videos.list
-          rm -f /tmp/ffmpeg_output.txt
-          rm -f /tmp/progress.txt
-          
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🎉 ALL CONVERSIONS COMPLETE!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
-          echo "📊 Final files:"
-          ls -lh *.mkv 2>/dev/null | awk '{print "  • " $9 " (" $5 ")"}'
-          echo ""
-          
-      - name: Upload artifacts
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Run torrent download and conversion
+        env:
+          MAGNET_LINK: ${{ inputs.magnet_link }}
+          QUALITY: ${{ inputs.quality }}
+          ZIP_NAME: ${{ inputs.zip_name }}
+          UPLOAD_TO: ${{ inputs.upload_to }}
+        run: python scripts/torrent_download_convert.py
+      
+      - name: Upload to Artifacts
+        if: ${{ inputs.upload_to == 'artifacts' }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.zip_name }}
@@ -247,3 +65,27 @@ jobs:
             ./download/*.ssa
             ./download/*.sub
           if-no-files-found: warn
+      
+      - name: Create Release Tag
+        if: ${{ inputs.upload_to == 'release' }}
+        id: create_tag
+        run: |
+          TAG_NAME="release-$(date +'%Y%m%d-%H%M%S')"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+      
+      - name: Upload to Release
+        if: ${{ inputs.upload_to == 'release' }}
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.create_tag.outputs.tag_name }}
+          name: ${{ inputs.zip_name }} - ${{ inputs.quality }}
+          files: |
+            ./download/*.mkv
+            ./download/*.srt
+            ./download/*.ass
+            ./download/*.ssa
+            ./download/*.sub
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
