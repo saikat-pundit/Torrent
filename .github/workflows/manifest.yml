@@ -1,0 +1,47 @@
+name: Simple File Manifest
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Generate File List
+        run: |
+          # Create output directory
+          mkdir -p manifest
+          
+          # Create header
+          echo "FILE MANIFEST" > manifest/files.txt
+          echo "Generated: $(date)" >> manifest/files.txt
+          echo "========================================" >> manifest/files.txt
+          echo "" >> manifest/files.txt
+          
+          # Find all files and add their content
+          find . -type f \
+            -not -path "./.git/*" \
+            -not -path "*/node_modules/*" \
+            -not -path "*/build/*" \
+            -not -path "*/dist/*" \
+            -not -name "*.lock" \
+            -not -name "*.log" \
+            | sort | while read file; do
+            
+            echo "FILE: $file" >> manifest/files.txt
+            echo "========================================" >> manifest/files.txt
+            cat "$file" 2>/dev/null >> manifest/files.txt || echo "[BINARY FILE]" >> manifest/files.txt
+            echo "" >> manifest/files.txt
+            echo "" >> manifest/files.txt
+          done
+          
+          # Count files
+          echo "Total files processed: $(find . -type f | wc -l)" >> manifest/files.txt
+          
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: file-manifest
+          path: manifest/
