@@ -66,26 +66,28 @@ jobs:
             ./download/*.sub
           if-no-files-found: warn
       
-      - name: Create Release Tag
+      - name: Create Release
         if: ${{ inputs.upload_to == 'release' }}
-        id: create_tag
-        run: |
-          TAG_NAME="release-$(date +'%Y%m%d-%H%M%S')"
-          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.run_number }}
+          release_name: Release ${{ github.run_number }} - ${{ inputs.zip_name }}
+          draft: false
+          prerelease: false
       
       - name: Upload to Release
         if: ${{ inputs.upload_to == 'release' }}
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.create_tag.outputs.tag_name }}
-          name: ${{ inputs.zip_name }} - ${{ inputs.quality }}
+          tag_name: Movie
           files: |
             ./download/*.mkv
             ./download/*.srt
             ./download/*.ass
             ./download/*.ssa
             ./download/*.sub
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
