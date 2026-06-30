@@ -239,6 +239,19 @@ def main():
         else:
             print(f"  Failed to convert: {video.name}")
             sys.exit(1)
+            
+    # Create zip file
+    zip_path = os.path.join(workspace, f"{zip_name}.zip")
+    print(f"\nCreating zip: {zip_name}.zip")
+    
+    import zipfile
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for f in Path(download_dir).iterdir():
+            if f.is_file():
+                zipf.write(f, f.name)
+                print(f"  Added: {f.name}")
+    
+    print(f"Zip created: {zip_path} ({format_size(os.path.getsize(zip_path))})")
     
     # Summary
     print(f"\nAll conversions complete!")
