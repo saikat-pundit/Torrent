@@ -61,48 +61,53 @@ jobs:
           path: ${{ inputs.zip_name }}.zip
           if-no-files-found: error
       
-      - name: Create or Update Movie1 Release
+      - name: Create Release
+        if: ${{ inputs.upload_to == 'release' }}
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.run_number }}
+          release_name: Release ${{ github.run_number }} - ${{ inputs.zip_name }}
+          draft: false
+          prerelease: false
+      
+      - name: Delete existing Movie1 release assets
         if: ${{ inputs.upload_to == 'release' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Check if Movie1 release exists
           RELEASE_ID=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/Movie1" | jq -r '.id')
           
-          if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
-            # Create new release with Movie1 tag
-            echo "Creating new Movie1 release..."
-            RELEASE_RESPONSE=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d "{\"tag_name\":\"Movie1\",\"name\":\"Movie1 - ${{ inputs.zip_name }}\",\"draft\":false,\"prerelease\":false}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases")
-            
-            RELEASE_ID=$(echo $RELEASE_RESPONSE | jq -r '.id')
-            echo "Created release ID: $RELEASE_ID"
-          else
-            echo "Movie1 release already exists (ID: $RELEASE_ID)"
-            
-            # Delete old assets
+          if [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
+            echo "Found existing Movie1 release (ID: $RELEASE_ID)"
             ASSETS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
               "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets")
             
             echo "$ASSETS" | jq -r '.[].id' | while read ASSET_ID; do
               if [ -n "$ASSET_ID" ] && [ "$ASSET_ID" != "null" ]; then
-                echo "Deleting old asset ID: $ASSET_ID"
+                echo "Deleting asset ID: $ASSET_ID"
                 curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
                   "https://api.github.com/repos/${{ github.repository }}/releases/assets/$ASSET_ID"
               fi
             done
+            
+            echo "Deleting old release..."
+            curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID"
+            
+            echo "Deleting old tag..."
+            curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/git/refs/tags/Movie1"
           fi
-          
-          # Upload new zip file
-          echo "Uploading ${{ inputs.zip_name }}.zip..."
-          UPLOAD_URL="https://uploads.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID/assets?name=${{ inputs.zip_name }}.zip"
-          
-          curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Content-Type: application/zip" \
-            --data-binary @"${{ inputs.zip_name }}.zip" \
-            "$UPLOAD_URL"
-          
-          echo "Upload complete!"
+      
+      - name: Upload to Movie1 Release
+        if: ${{ inputs.upload_to == 'release' }}
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: Movie1
+          files: ${{ inputs.zip_name }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
