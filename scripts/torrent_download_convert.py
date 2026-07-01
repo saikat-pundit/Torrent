@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""Torrent Download and Convert to H.265"""
-
 import os
 import sys
 import subprocess
