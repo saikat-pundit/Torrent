@@ -61,17 +61,7 @@ jobs:
           path: ${{ inputs.zip_name }}.zip
           if-no-files-found: error
       
-      - name: Create Release
-        if: ${{ inputs.upload_to == 'release' }}
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.run_number }}
-          release_name: Release ${{ github.run_number }} - ${{ inputs.zip_name }}
-          draft: false
-          prerelease: false
+      
       
       - name: Upload to Movie1 Release
         if: ${{ inputs.upload_to == 'release' }}
