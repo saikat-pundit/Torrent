@@ -70,17 +70,7 @@ jobs:
         name: ${{ github.event.inputs.output_filename }}-${{ github.event.inputs.quality }}
         path: ${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.mp4
     
-    - name: Create Release
-      if: ${{ github.event.inputs.upload_to == 'release' }}
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.run_number }}
-        release_name: Release ${{ github.run_number }} - ${{ github.event.inputs.output_filename }}
-        draft: false
-        prerelease: false
+    
     
     - name: Upload to Release
       if: ${{ github.event.inputs.upload_to == 'release' }}
