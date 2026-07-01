@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""External Video Download and Convert"""
-
 import os
 import sys
 import subprocess
