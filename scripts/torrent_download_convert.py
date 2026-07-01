@@ -1,19 +1,19 @@
+#!/usr/bin/env python3
+"""Torrent Download and Convert to H.265"""
+
 import os
 import sys
 import subprocess
 import re
 import shutil
-import time
+import zipfile
 from pathlib import Path
 
 
-def run(cmd, shell=False, show_output=False):
-    """Run command with optional real-time output."""
+def run(cmd, shell=False):
+    """Run command and return result."""
     if isinstance(cmd, str) and not shell:
         shell = True
-    
-    if show_output:
-        return subprocess.run(cmd, shell=shell, check=False)
     return subprocess.run(cmd, shell=shell, capture_output=True, text=True, check=False)
 
 
@@ -39,20 +39,36 @@ def download_torrent(magnet, download_dir):
     if result.returncode != 0:
         print("Download failed!")
         sys.exit(1)
-    print("Download complete.")
+    print("Download complete.\n")
 
 
 def get_quality_params(quality):
-    """Return encoding parameters for selected quality."""
+    """Return encoding parameters with FPS caps for each quality."""
     configs = {
-        "240p": {"scale": "scale=426:-2", "crf": "28", "preset": "medium", 
-                 "pix_fmt": "yuv420p", "x265_opts": ""},
-        "480p": {"scale": "scale=854:-2", "crf": "24", "preset": "medium", 
-                 "pix_fmt": "yuv420p10le", 
-                 "x265_opts": '-x265-params "psy-rd=2.0:psy-rdoq=5.0:aq-mode=3:deblock=-1,-1:no-sao=1"'},
-        "720p": {"scale": "scale=1280:-2", "crf": "23", "preset": "medium", 
-                 "pix_fmt": "yuv420p10le", 
-                 "x265_opts": '-x265-params "psy-rd=2.0:psy-rdoq=5.0:aq-mode=3:deblock=-1,-1:no-sao=1"'}
+        "240p": {
+            "scale": "scale=426:-2",
+            "crf": "28",
+            "preset": "medium",
+            "pix_fmt": "yuv420p",
+            "x265_opts": "",
+            "max_fps": 24
+        },
+        "480p": {
+            "scale": "scale=854:-2",
+            "crf": "24",
+            "preset": "medium",
+            "pix_fmt": "yuv420p10le",
+            "x265_opts": '-x265-params "psy-rd=2.0:psy-rdoq=5.0:aq-mode=3:deblock=-1,-1:no-sao=1"',
+            "max_fps": 30
+        },
+        "720p": {
+            "scale": "scale=1280:-2",
+            "crf": "23",
+            "preset": "medium",
+            "pix_fmt": "yuv420p10le",
+            "x265_opts": '-x265-params "psy-rd=2.0:psy-rdoq=5.0:aq-mode=3:deblock=-1,-1:no-sao=1"',
+            "max_fps": 30
+        }
     }
     return configs.get(quality, configs["480p"])
 
@@ -69,11 +85,12 @@ def flatten_dir(directory):
                 dest = dir_path / f"{f.stem}_{c}{f.suffix}"
                 c += 1
             shutil.move(str(f), str(dest))
-    # Remove empty dirs
     for d in sorted(dir_path.rglob("*"), reverse=True):
         if d.is_dir() and d != dir_path:
-            try: d.rmdir()
-            except OSError: pass
+            try:
+                d.rmdir()
+            except OSError:
+                pass
 
 
 def find_videos(directory):
@@ -96,79 +113,74 @@ def clean_name(name):
 def get_video_info(filepath):
     """Extract video metadata using ffprobe."""
     try:
-        # Duration
         r = run(f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{filepath}"')
         duration = float(r.stdout.strip().split('.')[0])
-        
-        # FPS
+
         r = run(f'ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 "{filepath}"')
         fps_str = r.stdout.strip()
         if '/' in fps_str:
             num, den = map(int, fps_str.split('/'))
             fps = num / den if den != 0 else 0
         else:
-            fps = float(fps_str)
-        
-        # Audio channels
+            fps = float(fps_str) if fps_str else 0
+
         r = run(f'ffprobe -v error -select_streams a:0 -show_entries stream=channels -of default=noprint_wrappers=1:nokey=1 "{filepath}"')
         channels = int(r.stdout.strip()) if r.stdout.strip().isdigit() else 2
-        
+
         return {"duration": duration, "fps": fps, "channels": channels}
     except:
-        return {"duration": 0, "fps": 24, "channels": 2}
+        return {"duration": 0, "fps": 0, "channels": 2}
 
 
 def convert_video(input_file, output_file, params):
-    """Convert video to H.265 with progress logging."""
+    """Convert video to H.265 with real-time stderr output."""
     info = get_video_info(input_file)
     
-    # Video filter
-    vf = f"fps=24,{params['scale']}" if info["fps"] > 24 else params["scale"]
+    # Build video filter with FPS cap
+    vf_parts = []
+    
+    # Apply FPS cap: if source FPS > max_fps, cap it; otherwise keep original
+    if info["fps"] > 0 and info["fps"] > params["max_fps"]:
+        vf_parts.append(f"fps={params['max_fps']}")
+    
+    vf_parts.append(params["scale"])
+    vf_filter = ",".join(vf_parts)
     
     # Audio options
     audio = "-c:a aac -b:a 128k -ac 2" if info["channels"] > 2 else "-c:a copy"
     
-    # Build command
+    # Build ffmpeg command - stats go to stderr automatically
     cmd = (
         f'ffmpeg -nostdin -i "{input_file}" '
-        f'-c:v libx265 -vf "{vf}" -preset {params["preset"]} '
+        f'-c:v libx265 -vf "{vf_filter}" -preset {params["preset"]} '
         f'-crf {params["crf"]} -pix_fmt {params["pix_fmt"]} '
         f'{params["x265_opts"]} {audio} -c:s copy '
         f'-map 0:v:0 -map 0:a:0 '
-        f'-progress pipe:1 -stats_period 10 -stats '
-        f'"{output_file}"'
+        f'-stats_period 10 -stats '
+        f'"{output_file}" -y'
     )
     
-    # Run with real-time output
+    # Run with stderr piped for real-time display
     process = subprocess.Popen(
-        cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
         text=True, bufsize=1
     )
     
-    # Print progress every 10 seconds
-    last_print = time.time()
-    for line in process.stdout:
-        current = time.time()
-        if current - last_print >= 10:
-            # Extract and display progress info
-            if 'speed=' in line or 'frame=' in line:
-                # Filter only progress lines
-                progress_line = line.strip()
-                if any(k in progress_line for k in ['frame=', 'fps=', 'speed=', 'size=', 'time=']):
-                    print(f"  {progress_line}")
-            last_print = current
+    # Print stderr in real-time (FFmpeg sends stats to stderr)
+    for line in process.stderr:
+        print(line, end='', flush=True)
     
     process.wait()
     return process.returncode
 
 
-def format_size(bytes):
+def format_size(size_bytes):
     """Convert bytes to human-readable size."""
     for unit in ['B', 'KB', 'MB', 'GB']:
-        if bytes < 1024.0:
-            return f"{bytes:.1f} {unit}"
-        bytes /= 1024.0
-    return f"{bytes:.1f} TB"
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.1f} TB"
 
 
 def main():
@@ -180,16 +192,14 @@ def main():
         print("Error: MAGNET_LINK not set!")
         sys.exit(1)
     
-    print(f"Quality: {quality}")
+    print(f"Quality: {quality}\n")
     
-    # Install deps
     install_deps()
     
-    # Setup paths
     workspace = os.getcwd()
     download_dir = os.path.join(workspace, "download")
     
-    # Download
+    # Download torrent
     download_torrent(magnet, download_dir)
     
     # Prepare files
@@ -202,18 +212,17 @@ def main():
         print("Contents:", list(Path(download_dir).iterdir()))
         sys.exit(1)
     
-    print(f"Found {len(videos)} video file(s)")
+    print(f"Found {len(videos)} video file(s)\n")
     
-    # Conversion params
+    # Get quality params
     params = get_quality_params(quality)
-    print(f"Quality: {params['crf']} CRF | {params['preset']} preset")
+    print(f"Settings: {quality} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']}\n")
     
-    # Convert
+    # Convert videos
     used_names = set()
     for i, video in enumerate(videos, 1):
         clean = clean_name(video.stem)
         
-        # Handle duplicates
         final_name = clean
         c = 1
         while final_name in used_names:
@@ -225,39 +234,41 @@ def main():
         orig_size = format_size(video.stat().st_size)
         info = get_video_info(video)
         
-        print(f"\n[{i}/{len(videos)}] {video.name}")
-        print(f"  Size: {orig_size} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s")
+        print(f"[{i}/{len(videos)}] {video.name}")
+        print(f"  Size: {orig_size} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
+        
+        # Show FPS action
+        if info["fps"] > params["max_fps"]:
+            print(f"  Capping FPS: {info['fps']:.2f} -> {params['max_fps']}")
+        else:
+            print(f"  Keeping original FPS: {info['fps']:.2f}")
+        
         print(f"  Converting...")
         
-        # Convert
         exit_code = convert_video(video, output, params)
         
         if exit_code == 0 and output.exists() and output.stat().st_size > 0:
             new_size = format_size(output.stat().st_size)
-            print(f"  Done: {output.name} ({new_size})")
-            video.unlink()  # Remove original
+            print(f"  Done: {output.name} ({new_size})\n")
+            video.unlink()
         else:
-            print(f"  Failed to convert: {video.name}")
+            print(f"  Failed to convert: {video.name}\n")
             sys.exit(1)
-            
-    # Create zip file
-    zip_path = os.path.join(workspace, f"{zip_name}.zip")
-    print(f"\nCreating zip: {zip_name}.zip")
     
-    import zipfile
+    # Create zip
+    zip_path = os.path.join(workspace, f"{zip_name}.zip")
+    print(f"Creating zip: {zip_name}.zip")
+    
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for f in Path(download_dir).iterdir():
             if f.is_file():
                 zipf.write(f, f.name)
                 print(f"  Added: {f.name}")
     
-    print(f"Zip created: {zip_path} ({format_size(os.path.getsize(zip_path))})")
+    zip_size = format_size(os.path.getsize(zip_path))
+    print(f"Zip created: {zip_name}.zip ({zip_size})")
     
-    # Summary
     print(f"\nAll conversions complete!")
-    print("Final files:")
-    for f in Path(download_dir).glob("*.mkv"):
-        print(f"  {f.name} ({format_size(f.stat().st_size)})")
 
 
 if __name__ == "__main__":
