@@ -1,4 +1,4 @@
-name: Download and Convert to H.265
+name: Torrent Video Download and Convert to H.265
 
 on:
   workflow_dispatch:
