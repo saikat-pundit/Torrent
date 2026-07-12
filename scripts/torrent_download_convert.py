@@ -64,8 +64,8 @@ def get_quality_params(quality):
         },
         "480p-av1": {
             "scale": "scale=854:-2",
-            "crf": "34",
-            "preset": "8",
+            "crf": "35",
+            "preset": "6",
             "pix_fmt": "yuv420p",
             "x265_opts": "",
             "max_fps": 26,
