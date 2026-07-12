@@ -42,23 +42,13 @@ def download_torrent(magnet, download_dir):
 def get_quality_params(quality):
     """Return encoding parameters with FPS caps for each quality."""
     configs = {
-        "240p": {
-            "scale": "scale=426:-2",
-            "crf": "28",
-            "preset": "medium",
-            "pix_fmt": "yuv420p",
-            "x265_opts": "",
-            "max_fps": 24,
-            "codec": "libx265",
-            "description": "H.265 240p"
-        },
         "480p": {
             "scale": "scale=854:-2",
             "crf": "24",
             "preset": "medium",
             "pix_fmt": "yuv420p10le",
             "x265_opts": '-x265-params "psy-rd=2.0:psy-rdoq=5.0:aq-mode=3:deblock=-1,-1:no-sao=1"',
-            "max_fps": 30,
+            "max_fps": 26,
             "codec": "libx265",
             "description": "H.265 480p"
         },
@@ -74,11 +64,11 @@ def get_quality_params(quality):
         },
         "480p-av1": {
             "scale": "scale=854:-2",
-            "crf": "30",
+            "crf": "34",
             "preset": "8",
             "pix_fmt": "yuv420p",
             "x265_opts": "",
-            "max_fps": 30,
+            "max_fps": 26,
             "codec": "libsvtav1",
             "description": "AV1 480p (Storage Optimized)"
         },
