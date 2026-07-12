@@ -75,7 +75,7 @@ def get_quality_params(quality):
         "480p-av1": {
             "scale": "scale=854:-2",
             "crf": "30",
-            "preset": "6",  # 0-8, lower = slower/smaller
+            "preset": "6",
             "pix_fmt": "yuv420p",
             "x265_opts": "",
             "max_fps": 30,
@@ -174,12 +174,12 @@ def convert_video(input_file, output_file, params):
     
     # Build ffmpeg command based on codec
     if params["codec"] == "libaom-av1":
-        # AV1 encoding
+        # AV1 encoding - fixed with row-mt and without b:v 0
         cmd = (
             f'ffmpeg -nostdin -i "{input_file}" '
             f'-c:v {params["codec"]} -vf "{vf_filter}" '
-            f'-crf {params["crf"]} -b:v 0 -preset {params["preset"]} '
-            f'-pix_fmt {params["pix_fmt"]} '
+            f'-crf {params["crf"]} -preset {params["preset"]} '
+            f'-pix_fmt {params["pix_fmt"]} -row-mt 1 '
             f'{audio} -c:s copy '
             f'-map 0:v:0 -map 0:a:0 '
             f'-stats_period 10 -stats '
