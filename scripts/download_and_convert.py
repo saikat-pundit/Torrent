@@ -138,29 +138,30 @@ def convert_video(input_file, output_file, params):
     vf_parts.append(params["scale"])
     vf_filter = ",".join(vf_parts)
     
-    # Audio options
-    audio = "-c:a aac -b:a 128k -ac 2" if info["channels"] > 2 else "-c:a copy"
-    
     # Build ffmpeg command based on codec
     if params["codec"] == "libsvtav1":
-        # AV1 encoding
+        # AV1 encoding - Keep ALL audio & subtitle tracks, convert all audio to 128k
         cmd = (
             f'ffmpeg -nostdin -i "{input_file}" '
+            f'-map 0:v -map 0:a -map 0:s? '  # Keep all video, audio, subtitle tracks
             f'-c:v {params["codec"]} -vf "{vf_filter}" '
             f'-crf {params["crf"]} -preset {params["preset"]} '
             f'-pix_fmt {params["pix_fmt"]} '
             f'-svtav1-params "tune=0:enable-overlays=1" '
-            f'{audio} '
+            f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
+            f'-c:s copy '  # Keep ALL subtitles (no re-encoding)
             f'-stats_period 10 -stats '
             f'"{output_file}" -y'
         )
     else:
-        # H.264 encoding (default)
+        # H.264 encoding - Keep ALL audio & subtitle tracks
         cmd = (
             f'ffmpeg -nostdin -i "{input_file}" '
+            f'-map 0:v -map 0:a -map 0:s? '  # Keep all video, audio, subtitle tracks
             f'-c:v {params["codec"]} -vf "{vf_filter}" -preset {params["preset"]} '
             f'-crf {params["crf"]} -pix_fmt {params["pix_fmt"]} '
-            f'{audio} '
+            f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
+            f'-c:s copy '  # Keep ALL subtitles (no re-encoding)
             f'-movflags +faststart '
             f'-stats_period 10 -stats '
             f'"{output_file}" -y'
