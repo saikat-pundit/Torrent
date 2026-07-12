@@ -48,7 +48,9 @@ def get_quality_params(quality):
             "preset": "medium",
             "pix_fmt": "yuv420p",
             "x265_opts": "",
-            "max_fps": 24
+            "max_fps": 24,
+            "codec": "libx265",
+            "description": "H.265 240p"
         },
         "480p": {
             "scale": "scale=854:-2",
@@ -56,7 +58,9 @@ def get_quality_params(quality):
             "preset": "medium",
             "pix_fmt": "yuv420p10le",
             "x265_opts": '-x265-params "psy-rd=2.0:psy-rdoq=5.0:aq-mode=3:deblock=-1,-1:no-sao=1"',
-            "max_fps": 30
+            "max_fps": 30,
+            "codec": "libx265",
+            "description": "H.265 480p"
         },
         "720p": {
             "scale": "scale=1280:-2",
@@ -64,7 +68,29 @@ def get_quality_params(quality):
             "preset": "medium",
             "pix_fmt": "yuv420p10le",
             "x265_opts": '-x265-params "psy-rd=2.0:psy-rdoq=5.0:aq-mode=3:deblock=-1,-1:no-sao=1"',
-            "max_fps": 30
+            "max_fps": 30,
+            "codec": "libx265",
+            "description": "H.265 720p"
+        },
+        "480p-av1": {
+            "scale": "scale=854:-2",
+            "crf": "30",
+            "preset": "6",  # 0-8, lower = slower/smaller
+            "pix_fmt": "yuv420p",
+            "x265_opts": "",
+            "max_fps": 30,
+            "codec": "libaom-av1",
+            "description": "AV1 480p (Storage Optimized)"
+        },
+        "720p-av1": {
+            "scale": "scale=1280:-2",
+            "crf": "30",
+            "preset": "6",
+            "pix_fmt": "yuv420p",
+            "x265_opts": "",
+            "max_fps": 30,
+            "codec": "libaom-av1",
+            "description": "AV1 720p (Storage Optimized)"
         }
     }
     return configs.get(quality, configs["480p"])
@@ -130,7 +156,7 @@ def get_video_info(filepath):
 
 
 def convert_video(input_file, output_file, params):
-    """Convert video to H.265 with real-time stderr output."""
+    """Convert video to H.265 or AV1 with real-time stderr output."""
     info = get_video_info(input_file)
     
     # Build video filter with FPS cap
@@ -146,16 +172,30 @@ def convert_video(input_file, output_file, params):
     # Audio options
     audio = "-c:a aac -b:a 128k -ac 2" if info["channels"] > 2 else "-c:a copy"
     
-    # Build ffmpeg command - stats go to stderr automatically
-    cmd = (
-        f'ffmpeg -nostdin -i "{input_file}" '
-        f'-c:v libx265 -vf "{vf_filter}" -preset {params["preset"]} '
-        f'-crf {params["crf"]} -pix_fmt {params["pix_fmt"]} '
-        f'{params["x265_opts"]} {audio} -c:s copy '
-        f'-map 0:v:0 -map 0:a:0 '
-        f'-stats_period 10 -stats '
-        f'"{output_file}" -y'
-    )
+    # Build ffmpeg command based on codec
+    if params["codec"] == "libaom-av1":
+        # AV1 encoding
+        cmd = (
+            f'ffmpeg -nostdin -i "{input_file}" '
+            f'-c:v {params["codec"]} -vf "{vf_filter}" '
+            f'-crf {params["crf"]} -b:v 0 -preset {params["preset"]} '
+            f'-pix_fmt {params["pix_fmt"]} '
+            f'{audio} -c:s copy '
+            f'-map 0:v:0 -map 0:a:0 '
+            f'-stats_period 10 -stats '
+            f'"{output_file}" -y'
+        )
+    else:
+        # H.265 encoding (default)
+        cmd = (
+            f'ffmpeg -nostdin -i "{input_file}" '
+            f'-c:v {params["codec"]} -vf "{vf_filter}" -preset {params["preset"]} '
+            f'-crf {params["crf"]} -pix_fmt {params["pix_fmt"]} '
+            f'{params["x265_opts"]} {audio} -c:s copy '
+            f'-map 0:v:0 -map 0:a:0 '
+            f'-stats_period 10 -stats '
+            f'"{output_file}" -y'
+        )
     
     # Run with stderr piped for real-time display
     process = subprocess.Popen(
@@ -213,7 +253,7 @@ def main():
     
     # Get quality params
     params = get_quality_params(quality)
-    print(f"Settings: {quality} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']}\n")
+    print(f"Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']}\n")
     
     # Convert videos
     used_names = set()
@@ -240,7 +280,7 @@ def main():
         else:
             print(f"  Keeping original FPS: {info['fps']:.2f}")
         
-        print(f"  Converting...")
+        print(f"  Converting with {params['codec']}...")
         
         exit_code = convert_video(video, output, params)
         
