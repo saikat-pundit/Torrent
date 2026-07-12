@@ -1,4 +1,4 @@
-name: Torrent Video Download and Convert to H.265
+name: Torrent Video Download and Convert to H.265/AV1
 
 on:
   workflow_dispatch:
@@ -13,9 +13,10 @@ on:
         type: choice
         default: '480p'
         options:
-          - '240p'
-          - '480p'
-          - '720p'
+          - '480p-H.265'
+          - '720p-H.265'
+          - '480p-av1'
+          - '720p-av1'
       zip_name:
         description: 'Zip file name (without extension)'
         required: false
@@ -60,8 +61,6 @@ jobs:
           name: ${{ inputs.zip_name }}
           path: ${{ inputs.zip_name }}.zip
           if-no-files-found: error
-      
-      
       
       - name: Upload to Movie1 Release
         if: ${{ inputs.upload_to == 'release' }}
