@@ -76,7 +76,7 @@ def get_quality_params(quality):
     "preset": "8",            # ← change from 6
     "pix_fmt": "yuv420p",
     "x265_opts": "",
-    "max_fps": 24,            # ← change from 26
+    "max_fps": 25,            # ← change from 26
     "codec": "libsvtav1",
     "description": "AV1 480p (Ultra Storage)"
 },
@@ -86,7 +86,7 @@ def get_quality_params(quality):
     "preset": "8",            # ← keep same
     "pix_fmt": "yuv420p",
     "x265_opts": "",
-    "max_fps": 24,            # ← change from 30
+    "max_fps": 27,            # ← change from 30
     "codec": "libsvtav1",
     "description": "AV1 720p (Ultra Storage)"
 }
