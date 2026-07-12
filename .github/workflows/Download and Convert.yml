@@ -13,8 +13,9 @@ on:
         type: choice
         default: '480p'
         options:
-          - '480p-H.265'
-          - '720p-H.265'
+          - '240p'
+          - '480p'
+          - '720p'
           - '480p-av1'
           - '720p-av1'
       zip_name:
