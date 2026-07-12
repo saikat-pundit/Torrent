@@ -13,7 +13,6 @@ on:
         type: choice
         default: '480p'
         options:
-          - '240p'
           - '480p'
           - '720p'
           - '480p-av1'
