@@ -64,8 +64,8 @@ def get_quality_params(quality):
         },
         "480p-av1": {
     "scale": "scale=854:-2",
-    "crf": "38",              # ← change from 35
-    "preset": "8",            # ← change from 6 (faster)
+    "crf": "37",              # ← change from 35
+    "preset": "7",            # ← change from 6 (faster)
     "pix_fmt": "yuv420p",
     "x265_opts": "",
     "max_fps": 25,            # ← change from 26
@@ -74,8 +74,8 @@ def get_quality_params(quality):
 },
 "720p-av1": {
     "scale": "scale=1280:-2",
-    "crf": "34",              # ← change from 30
-    "preset": "8",            # ← keep same
+    "crf": "33",              # ← change from 30
+    "preset": "7",            # ← keep same
     "pix_fmt": "yuv420p",
     "x265_opts": "",
     "max_fps": 27,            # ← change from 30
