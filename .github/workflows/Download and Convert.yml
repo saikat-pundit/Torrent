@@ -99,6 +99,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: Movie1
-          files: ${{ inputs.zip_name }}.zip
+          files: ./${{ inputs.zip_name }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
