@@ -24,7 +24,7 @@ on:
         description: 'Upload destination'
         required: true
         type: choice
-        default: 'artifacts'
+        default: 'release'
         options:
           - 'artifacts'
           - 'release'
