@@ -66,7 +66,7 @@ def get_quality_params(quality):
     "scale": "scale=854:-2",
     "crf": "37",              # ← change from 35
     "preset": "7",            # ← change from 6 (faster)
-    "pix_fmt": "yuv420p",
+    "pix_fmt": "yuv420p10le",
     "x265_opts": "",
     "max_fps": 25,            # ← change from 26
     "codec": "libsvtav1",
@@ -74,13 +74,13 @@ def get_quality_params(quality):
 },
 "720p-av1": {
     "scale": "scale=1280:-2",
-    "crf": "33",              # ← change from 30
-    "preset": "7",            # ← keep same
-    "pix_fmt": "yuv420p",
+    "crf": "28",
+    "preset": "5",
+    "pix_fmt": "yuv420p10le",
     "x265_opts": "",
-    "max_fps": 27,            # ← change from 30
+    "max_fps": 50,
     "codec": "libsvtav1",
-    "description": "AV1 720p (Ultra Storage)"
+    "description": "AV1 720p"
 }
     }
     return configs.get(quality, configs["480p"])
