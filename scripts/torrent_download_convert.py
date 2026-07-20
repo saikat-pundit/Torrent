@@ -74,11 +74,11 @@ def get_quality_params(quality):
 },
 "720p-av1": {
     "scale": "scale=1280:-2",
-    "crf": "28",
-    "preset": "5",
+    "crf": "34",
+    "preset": "8",
     "pix_fmt": "yuv420p10le",
     "x265_opts": "",
-    "max_fps": 50,
+    "max_fps": 30,
     "codec": "libsvtav1",
     "description": "AV1 720p"
 }
