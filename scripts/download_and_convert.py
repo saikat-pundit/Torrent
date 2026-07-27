@@ -72,9 +72,9 @@ def get_quality_params(quality):
         },
         "480p-av1": {
     "scale": "scale=854:-2",
-    "crf": "38",              # ← change from 35
-    "preset": "8",            # ← change from 6 (faster)
-    "pix_fmt": "yuv420p",
+    "crf": "37",              # ← change from 35
+    "preset": "7",            # ← change from 6 (faster)
+    "pix_fmt": "yuv420p10le",
     "x265_opts": "",
     "max_fps": 25,            # ← change from 26
     "codec": "libsvtav1",
