@@ -58,7 +58,7 @@ def get_quality_params(quality):
             "x265_opts": "",
             "max_fps": 25,
             "codec": "libsvtav1",
-            "description": "AV1 480p (Ultra Storage)",
+            "description": "AV1 480p",
             "container": "mkv"  # AV1 works better with MKV container
         },
         "720p-av1": {
@@ -69,7 +69,7 @@ def get_quality_params(quality):
             "x265_opts": "",
             "max_fps": 27,
             "codec": "libsvtav1",
-            "description": "AV1 720p (Ultra Storage)",
+            "description": "AV1 720p",
             "container": "mkv"  # AV1 works better with MKV container
         }
     }
