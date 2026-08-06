@@ -51,25 +51,27 @@ def get_quality_params(quality):
     """Return encoding parameters with FPS caps for each quality."""
     configs = {       
         "480p-av1": {
-    "scale": "scale=854:-2",
-    "crf": "37",              # ← change from 35
-    "preset": "7",            # ← change from 6 (faster)
-    "pix_fmt": "yuv420p10le",
-    "x265_opts": "",
-    "max_fps": 25,            # ← change from 26
-    "codec": "libsvtav1",
-    "description": "AV1 480p (Ultra Storage)"
-},
-"720p-av1": {
-    "scale": "scale=1280:-2",
-    "crf": "34",              # ← change from 30
-    "preset": "8",            # ← keep same
-    "pix_fmt": "yuv420p",
-    "x265_opts": "",
-    "max_fps": 27,            # ← change from 30
-    "codec": "libsvtav1",
-    "description": "AV1 720p (Ultra Storage)"
-}
+            "scale": "scale=854:-2",
+            "crf": "37",
+            "preset": "7",
+            "pix_fmt": "yuv420p10le",
+            "x265_opts": "",
+            "max_fps": 25,
+            "codec": "libsvtav1",
+            "description": "AV1 480p (Ultra Storage)",
+            "container": "mkv"  # AV1 works better with MKV container
+        },
+        "720p-av1": {
+            "scale": "scale=1280:-2",
+            "crf": "34",
+            "preset": "8",
+            "pix_fmt": "yuv420p",
+            "x265_opts": "",
+            "max_fps": 27,
+            "codec": "libsvtav1",
+            "description": "AV1 720p (Ultra Storage)",
+            "container": "mkv"  # AV1 works better with MKV container
+        }
     }
     return configs.get(quality)
 
@@ -105,6 +107,36 @@ def get_video_info(filepath):
         return {"duration": 0, "fps": 0, "channels": 2}
 
 
+def get_input_container(filepath):
+    """Detect the container format of the input file."""
+    try:
+        r = subprocess.run(
+            f'ffprobe -v error -show_entries format=format_name -of default=noprint_wrappers=1:nokey=1 "{filepath}"',
+            shell=True, capture_output=True, text=True
+        )
+        format_name = r.stdout.strip().split(',')[0]  # Get first format
+        if 'matroska' in format_name or 'mkv' in format_name:
+            return 'mkv'
+        elif 'mp4' in format_name or 'mov' in format_name:
+            return 'mp4'
+        else:
+            # Fallback: use file extension
+            ext = os.path.splitext(filepath)[1].lower()
+            if ext in ['.mkv', '.webm']:
+                return 'mkv'
+            elif ext in ['.mp4', '.mov']:
+                return 'mp4'
+            return 'mkv'  # Default fallback
+    except:
+        # Fallback to extension
+        ext = os.path.splitext(filepath)[1].lower()
+        if ext in ['.mkv', '.webm']:
+            return 'mkv'
+        elif ext in ['.mp4', '.mov']:
+            return 'mp4'
+        return 'mkv'  # Default fallback
+
+
 def convert_video(input_file, output_file, params):
     """Convert video with real-time stderr output."""
     info = get_video_info(input_file)
@@ -118,30 +150,32 @@ def convert_video(input_file, output_file, params):
     vf_parts.append(params["scale"])
     vf_filter = ",".join(vf_parts)
     
+    # Detect input container to handle subtitles appropriately
+    input_container = get_input_container(input_file)
+    
     # Build ffmpeg command based on codec
     if params["codec"] == "libsvtav1":
-        # AV1 encoding - Keep ALL audio & subtitle tracks, convert all audio to 128k
+        # AV1 encoding - Keep video & audio tracks, convert all audio to 128k
+        # Skip subtitles to avoid container compatibility issues
         cmd = (
             f'ffmpeg -nostdin -i "{input_file}" '
-            f'-map 0:v -map 0:a -map 0:s? '  # Keep all video, audio, subtitle tracks
+            f'-map 0:v -map 0:a '  # Video + audio only (no subtitles)
             f'-c:v {params["codec"]} -vf "{vf_filter}" '
             f'-crf {params["crf"]} -preset {params["preset"]} '
             f'-pix_fmt {params["pix_fmt"]} '
             f'-svtav1-params "tune=0:enable-overlays=1" '
             f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
-            f'-c:s copy '  # Keep ALL subtitles (no re-encoding)
             f'-stats_period 10 -stats '
             f'"{output_file}" -y'
         )
     else:
-        # H.264 encoding - Keep ALL audio & subtitle tracks
+        # H.264 encoding - Keep video & audio tracks
         cmd = (
             f'ffmpeg -nostdin -i "{input_file}" '
-            f'-map 0:v -map 0:a -map 0:s? '  # Keep all video, audio, subtitle tracks
+            f'-map 0:v -map 0:a '  # Video + audio only (no subtitles)
             f'-c:v {params["codec"]} -vf "{vf_filter}" -preset {params["preset"]} '
             f'-crf {params["crf"]} -pix_fmt {params["pix_fmt"]} '
             f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
-            f'-c:s copy '  # Keep ALL subtitles (no re-encoding)
             f'-movflags +faststart '
             f'-stats_period 10 -stats '
             f'"{output_file}" -y'
@@ -179,8 +213,10 @@ def main():
         print("Error: VIDEO_URL environment variable not set")
         sys.exit(1)
     
-    if not output_filename.endswith('.mp4'):
-        output_filename += '.mp4'
+    # Don't force .mp4 - let the quality config determine the container
+    # Just make sure it has some extension
+    if '.' not in output_filename:
+        output_filename += '.mp4'  # fallback
     
     print("=" * 60)
     print("VIDEO DOWNLOAD AND CONVERTER")
@@ -194,7 +230,9 @@ def main():
     
     # Handle original quality
     if quality == 'original':
-        final_filename = output_filename.replace('.mp4', '_original.mp4')
+        # Get original extension from temp file
+        original_ext = os.path.splitext(temp_filename)[1]
+        final_filename = output_filename.replace('.mp4', f'_original{original_ext}')
         os.rename(temp_filename, final_filename)
         info = get_video_info(final_filename)
         print(f"\nOriginal saved as: {final_filename}")
@@ -203,7 +241,13 @@ def main():
     # Handle conversion
     elif quality in ['480p', '720p', '480p-av1', '720p-av1']:
         params = get_quality_params(quality)
-        final_filename = output_filename.replace('.mp4', f'_{quality}.mp4')
+        if not params:
+            print(f"Error: Quality config not found for {quality}")
+            sys.exit(1)
+            
+        # Get container from params or default to mkv for av1
+        container = params.get('container', 'mkv')
+        final_filename = output_filename.replace('.mp4', f'_{quality}.{container}')
         
         info = get_video_info(temp_filename)
         print(f"\nSource: {format_size(os.path.getsize(temp_filename))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
@@ -215,6 +259,9 @@ def main():
         else:
             print(f"Keeping original FPS: {info['fps']:.2f}")
         
+        # Detect input container
+        input_container = get_input_container(temp_filename)
+        print(f"Input container: {input_container.upper()} | Output container: {container.upper()}")
         print(f"Converting with {params['codec']}...\n")
         
         exit_code = convert_video(temp_filename, final_filename, params)
