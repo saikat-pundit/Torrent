@@ -63,7 +63,7 @@ def get_quality_params(quality):
     "description": "AV1 720p"
 }
     }
-    return configs.get(quality, configs["480p"])
+    return configs.get(quality, configs["480p-av1"])
 
 
 def flatten_dir(directory):
