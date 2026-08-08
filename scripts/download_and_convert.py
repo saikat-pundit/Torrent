@@ -155,19 +155,22 @@ def convert_video(input_file, output_file, params):
     
     # Build ffmpeg command based on codec
     if params["codec"] == "libsvtav1":
-        # AV1 encoding - Keep video & audio tracks, convert all audio to 128k
-        # Skip subtitles to avoid container compatibility issues
-        cmd = (
-            f'ffmpeg -nostdin -i "{input_file}" '
-            f'-map 0:v -map 0:a '  # Video + audio only (no subtitles)
-            f'-c:v {params["codec"]} -vf "{vf_filter}" '
-            f'-crf {params["crf"]} -preset {params["preset"]} '
-            f'-pix_fmt {params["pix_fmt"]} '
-            f'-svtav1-params "tune=0:enable-overlays=1" '
-            f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
-            f'-stats_period 10 -stats '
-            f'"{output_file}" -y'
-        )
+    # Determine audio bitrate based on quality
+    audio_bitrate = "96k" if quality in ["480p-av1"] else "128k"
+    
+    # AV1 encoding - Keep video & audio tracks
+    cmd = (
+        f'ffmpeg -nostdin -i "{input_file}" '
+        f'-map 0:v -map 0:a '  # Video + audio only (no subtitles)
+        f'-c:v {params["codec"]} -vf "{vf_filter}" '
+        f'-crf {params["crf"]} -preset {params["preset"]} '
+        f'-pix_fmt {params["pix_fmt"]} '
+        f'-svtav1-params "tune=0:enable-overlays=1:enable-qm=1:qm-min=6:qm-max=15:enable-tf=1:scd=1" '
+        f'-c:a aac -b:a {audio_bitrate} '  # 96k for 480p, 128k for 720p
+        f'-row-mt 1 '
+        f'-stats_period 10 -stats '
+        f'"{output_file}" -y'
+    )
     else:
         # H.264 encoding - Keep video & audio tracks
         cmd = (
@@ -255,7 +258,8 @@ def main():
         info = get_video_info(temp_filename)
         print(f"\nSource: {format_size(os.path.getsize(temp_filename))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
         
-        print(f"Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']}")
+        audio_bitrate = "96k" if quality in ["480p-av1"] else "128k"
+print(f"Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']} | Audio: {audio_bitrate}")
         
         if info["fps"] > params["max_fps"]:
             print(f"Capping FPS: {info['fps']:.2f} -> {params['max_fps']}")
