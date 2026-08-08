@@ -229,11 +229,11 @@ def main():
         sys.exit(1)
     
     # Handle original quality
-if quality == 'original':
-    # Get original extension from temp file
-    original_ext = os.path.splitext(temp_filename)[1]
-    base_name = os.path.splitext(output_filename)[0] if '.' in output_filename else output_filename
-    final_filename = f"{base_name}_original{original_ext}"
+    if quality == 'original':
+        # Get original extension from temp file
+        original_ext = os.path.splitext(temp_filename)[1]
+        base_name = os.path.splitext(output_filename)[0] if '.' in output_filename else output_filename
+        final_filename = f"{base_name}_original{original_ext}"
         os.rename(temp_filename, final_filename)
         info = get_video_info(final_filename)
         print(f"\nOriginal saved as: {final_filename}")
@@ -247,14 +247,10 @@ if quality == 'original':
             sys.exit(1)
             
         # Get container from params or default to mkv for av1
-        # Get container from params or default to mkv for av1
-container = params.get('container', 'mkv')
-# Make sure output_filename has an extension before replacing
-base_name = output_filename
-if '.' in base_name:
-    # Remove the extension if it exists
-    base_name = os.path.splitext(base_name)[0]
-final_filename = f"{base_name}_{quality}.{container}"
+        container = params.get('container', 'mkv')
+        # Make sure output_filename has an extension before replacing
+        base_name = os.path.splitext(output_filename)[0] if '.' in output_filename else output_filename
+        final_filename = f"{base_name}_{quality}.{container}"
         
         info = get_video_info(temp_filename)
         print(f"\nSource: {format_size(os.path.getsize(temp_filename))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
