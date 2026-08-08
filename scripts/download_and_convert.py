@@ -171,18 +171,18 @@ def convert_video(input_file, output_file, params):
         f'-stats_period 10 -stats '
         f'"{output_file}" -y'
     )
-    else:
-        # H.264 encoding - Keep video & audio tracks
-        cmd = (
-            f'ffmpeg -nostdin -i "{input_file}" '
-            f'-map 0:v -map 0:a '  # Video + audio only (no subtitles)
-            f'-c:v {params["codec"]} -vf "{vf_filter}" -preset {params["preset"]} '
-            f'-crf {params["crf"]} -pix_fmt {params["pix_fmt"]} '
-            f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
-            f'-movflags +faststart '
-            f'-stats_period 10 -stats '
-            f'"{output_file}" -y'
-        )
+else:
+    # H.264 encoding - Keep video & audio tracks
+    cmd = (
+        f'ffmpeg -nostdin -i "{input_file}" '
+        f'-map 0:v -map 0:a '  # Video + audio only (no subtitles)
+        f'-c:v {params["codec"]} -vf "{vf_filter}" -preset {params["preset"]} '
+        f'-crf {params["crf"]} -pix_fmt {params["pix_fmt"]} '
+        f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
+        f'-movflags +faststart '
+        f'-stats_period 10 -stats '
+        f'"{output_file}" -y'
+    )
     
     # Run with stderr piped for real-time display
     process = subprocess.Popen(
