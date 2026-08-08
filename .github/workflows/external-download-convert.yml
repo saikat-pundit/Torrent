@@ -27,7 +27,7 @@ on:
         description: 'Upload to'
         required: true
         type: choice
-        default: 'relase'
+        default: 'release'
         options:
           - 'artifacts'
           - 'release'
@@ -100,7 +100,8 @@ jobs:
       with:
         name: ${{ github.event.inputs.output_filename }}-${{ github.event.inputs.quality }}
         path: |
-          ${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.*
+          *.mp4
+          *.mkv
         if-no-files-found: error
     
     - name: Upload to Release
@@ -109,7 +110,8 @@ jobs:
       with:
         tag_name: Movie
         files: |
-          ${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.*
+          *.mp4
+          *.mkv
         fail_on_unmatched_files: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
