@@ -109,7 +109,7 @@ jobs:
       with:
         tag_name: Movie
         files: |
-          ${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.*
-        fail_on_unmatched_files: true
+          ${{ github.event.inputs.output_filename }}_*.{mp4,mkv}
+        fail_on_unmatched_files: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
