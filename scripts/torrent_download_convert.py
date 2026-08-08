@@ -27,18 +27,10 @@ def download_torrent(magnet, download_dir):
     os.makedirs(download_dir, exist_ok=True)
     
     cmd = (
-    f'ffmpeg -nostdin -i "{input_file}" '
-    f'-map 0:v -map 0:a -map 0:s? '
-    f'-c:v {params["codec"]} -vf "{vf_filter}" '
-    f'-crf {params["crf"]} -preset {params["preset"]} '
-    f'-pix_fmt {params["pix_fmt"]} '
-    f'-svtav1-params "tune=0:enable-overlays=1:enable-qm=1:qm-min=6:qm-max=15:enable-tf=1:scd=1" '
-    f'-c:a aac -b:a 96k '
-    f'-c:s copy '
-    f'-row-mt 1 '
-    f'-stats_period 10 -stats '
-    f'"{output_file}" -y'
-)
+        f"aria2c --seed-time=0 --max-connection-per-server=16 --split=16 "
+        f"--dir={download_dir} --console-log-level=notice --summary-interval=10 "
+        f"--show-console-readout=true --human-readable=true \"{magnet}\""
+    )
     
     result = subprocess.run(cmd, shell=True, check=False)
     if result.returncode != 0:
@@ -51,25 +43,25 @@ def get_quality_params(quality):
     """Return encoding parameters with FPS caps for each quality."""
     configs = {
         "480p-av1": {
-    "scale": "scale=854:-2",
-    "crf": "37",              # ← change from 35
-    "preset": "7",            # ← change from 6 (faster)
-    "pix_fmt": "yuv420p10le",
-    "x265_opts": "",
-    "max_fps": 25,            # ← change from 26
-    "codec": "libsvtav1",
-    "description": "AV1 480p (Ultra Storage)"
-},
-"720p-av1": {
-    "scale": "scale=1280:-2",
-    "crf": "34",
-    "preset": "8",
-    "pix_fmt": "yuv420p10le",
-    "x265_opts": "",
-    "max_fps": 30,
-    "codec": "libsvtav1",
-    "description": "AV1 720p"
-}
+            "scale": "scale=854:-2",
+            "crf": "37",
+            "preset": "7",
+            "pix_fmt": "yuv420p10le",
+            "x265_opts": "",
+            "max_fps": 25,
+            "codec": "libsvtav1",
+            "description": "AV1 480p (Ultra Storage)"
+        },
+        "720p-av1": {
+            "scale": "scale=1280:-2",
+            "crf": "34",
+            "preset": "8",
+            "pix_fmt": "yuv420p10le",
+            "x265_opts": "",
+            "max_fps": 30,
+            "codec": "libsvtav1",
+            "description": "AV1 720p"
+        }
     }
     return configs.get(quality, configs["480p-av1"])
 
@@ -133,8 +125,8 @@ def get_video_info(filepath):
         return {"duration": 0, "fps": 0, "channels": 2}
 
 
-def convert_video(input_file, output_file, params):
-    """Convert video to H.265 or AV1 with real-time stderr output."""
+def convert_video(input_file, output_file, params, quality):
+    """Convert video to AV1 with real-time stderr output."""
     info = get_video_info(input_file)
     
     # Build video filter with FPS cap
@@ -147,34 +139,23 @@ def convert_video(input_file, output_file, params):
     vf_parts.append(params["scale"])
     vf_filter = ",".join(vf_parts)
     
-    # Build ffmpeg command based on codec
-    if params["codec"] == "libsvtav1":
-        # SVT-AV1 encoding - Keep ALL audio & subtitle tracks
-        cmd = (
-            f'ffmpeg -nostdin -i "{input_file}" '
-            f'-map 0:v -map 0:a -map 0:s? '  # Keep all video, audio, subtitle tracks
-            f'-c:v {params["codec"]} -vf "{vf_filter}" '
-            f'-crf {params["crf"]} -preset {params["preset"]} '
-            f'-pix_fmt {params["pix_fmt"]} '
-            f'-svtav1-params "tune=0:enable-overlays=1" '
-            f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
-            f'-c:s copy '  # Keep ALL subtitles (no re-encoding)
-            f'-stats_period 10 -stats '
-            f'"{output_file}" -y'
-        )
-    else:
-        # H.265 encoding - Keep ALL audio & subtitle tracks
-        cmd = (
-            f'ffmpeg -nostdin -i "{input_file}" '
-            f'-map 0:v -map 0:a -map 0:s? '  # Keep all video, audio, subtitle tracks
-            f'-c:v {params["codec"]} -vf "{vf_filter}" -preset {params["preset"]} '
-            f'-crf {params["crf"]} -pix_fmt {params["pix_fmt"]} '
-            f'{params["x265_opts"]} '
-            f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
-            f'-c:s copy '  # Keep ALL subtitles (no re-encoding)
-            f'-stats_period 10 -stats '
-            f'"{output_file}" -y'
-        )
+    # Determine audio bitrate based on quality
+    audio_bitrate = "96k" if quality == "480p-av1" else "128k"
+    
+    # SVT-AV1 encoding - Keep ALL audio & subtitle tracks
+    cmd = (
+        f'ffmpeg -nostdin -i "{input_file}" '
+        f'-map 0:v -map 0:a -map 0:s? '  # Keep all video, audio, subtitle tracks
+        f'-c:v {params["codec"]} -vf "{vf_filter}" '
+        f'-crf {params["crf"]} -preset {params["preset"]} '
+        f'-pix_fmt {params["pix_fmt"]} '
+        f'-svtav1-params "tune=0:enable-overlays=1:enable-qm=1:qm-min=6:qm-max=15:enable-tf=1:scd=1" '
+        f'-c:a aac -b:a {audio_bitrate} '  # 96k for 480p, 128k for 720p
+        f'-c:s copy '  # Keep ALL subtitles (no re-encoding)
+        f'-row-mt 1 '
+        f'-stats_period 10 -stats '
+        f'"{output_file}" -y'
+    )
     
     # Run with stderr piped for real-time display
     process = subprocess.Popen(
@@ -201,7 +182,7 @@ def format_size(size_bytes):
 
 def main():
     magnet = os.environ.get('MAGNET_LINK')
-    quality = os.environ.get('QUALITY', '480p')
+    quality = os.environ.get('QUALITY', '480p-av1')
     zip_name = os.environ.get('ZIP_NAME', 'converted_videos')
     
     if not magnet:
@@ -259,9 +240,13 @@ def main():
         else:
             print(f"  Keeping original FPS: {info['fps']:.2f}")
         
+        # Show audio bitrate
+        audio_bitrate = "96k" if quality == "480p-av1" else "128k"
+        print(f"  Audio bitrate: {audio_bitrate}")
+        
         print(f"  Converting with {params['codec']}...")
         
-        exit_code = convert_video(video, output, params)
+        exit_code = convert_video(video, output, params, quality)
         
         if exit_code == 0 and output.exists() and output.stat().st_size > 0:
             new_size = format_size(output.stat().st_size)
