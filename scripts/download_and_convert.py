@@ -11,11 +11,7 @@ def download_video(url, output_filename):
     """Download video with progress logging every 10 seconds."""
     print(f"Downloading from: {url}")
     
-    try:
-        response = requests.get(url, stream=True, allow_redirects=True, timeout=30)
-    except Exception as e:
-        print(f"Failed to download. Error: {e}")
-        return False
+    response = requests.get(url, stream=True, allow_redirects=True)
     
     if response.status_code != 200:
         print(f"Failed to download. Status code: {response.status_code}")
@@ -26,39 +22,29 @@ def download_video(url, output_filename):
     start_time = time.time()
     last_print = start_time
     
-    try:
-        with open(output_filename, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
+    with open(output_filename, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+                downloaded += len(chunk)
+                
+                current_time = time.time()
+                if current_time - last_print >= 10:
+                    elapsed = current_time - start_time
+                    speed = downloaded / elapsed if elapsed > 0 else 0
                     
-                    current_time = time.time()
-                    if current_time - last_print >= 10:
-                        elapsed = current_time - start_time
-                        speed = downloaded / elapsed if elapsed > 0 else 0
-                        
-                        if total_size > 0:
-                            percent = (downloaded / total_size) * 100
-                            print(f"  {format_size(downloaded)} / {format_size(total_size)} ({percent:.1f}%) - {format_size(speed)}/s")
-                        else:
-                            print(f"  {format_size(downloaded)} downloaded - {format_size(speed)}/s")
-                        
-                        last_print = current_time
-    except Exception as e:
-        print(f"Error during download: {e}")
-        return False
+                    if total_size > 0:
+                        percent = (downloaded / total_size) * 100
+                        print(f"  {format_size(downloaded)} / {format_size(total_size)} ({percent:.1f}%) - {format_size(speed)}/s")
+                    else:
+                        print(f"  {format_size(downloaded)} downloaded - {format_size(speed)}/s")
+                    
+                    last_print = current_time
     
     elapsed = time.time() - start_time
     speed = downloaded / elapsed if elapsed > 0 else 0
     print(f"Download complete: {format_size(downloaded)} in {elapsed:.1f}s ({format_size(speed)}/s)")
-    
-    if os.path.exists(output_filename) and os.path.getsize(output_filename) > 0:
-        print(f"File saved: {output_filename} ({format_size(os.path.getsize(output_filename))})")
-        return True
-    else:
-        print(f"Error: File {output_filename} is empty or was not created")
-        return False
+    return True
 
 
 def get_quality_params(quality):
@@ -73,18 +59,18 @@ def get_quality_params(quality):
             "max_fps": 25,
             "codec": "libsvtav1",
             "description": "AV1 480p",
-            "container": "mkv"
+            "container": "mkv"  # AV1 works better with MKV container
         },
         "720p-av1": {
             "scale": "scale=1280:-2",
             "crf": "34",
             "preset": "8",
-            "pix_fmt": "yuv420p10le",
+            "pix_fmt": "yuv420p",
             "x265_opts": "",
-            "max_fps": 30,
+            "max_fps": 27,
             "codec": "libsvtav1",
             "description": "AV1 720p",
-            "container": "mkv"
+            "container": "mkv"  # AV1 works better with MKV container
         }
     }
     return configs.get(quality)
@@ -92,19 +78,16 @@ def get_quality_params(quality):
 
 def get_video_info(filepath):
     """Extract video metadata using ffprobe."""
-    if not os.path.exists(filepath):
-        return {"duration": 0, "fps": 0, "channels": 2}
-    
     try:
         r = subprocess.run(
             f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{filepath}"',
-            shell=True, capture_output=True, text=True, timeout=10
+            shell=True, capture_output=True, text=True
         )
-        duration = float(r.stdout.strip().split('.')[0]) if r.stdout.strip() else 0
+        duration = float(r.stdout.strip().split('.')[0])
 
         r = subprocess.run(
             f'ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 "{filepath}"',
-            shell=True, capture_output=True, text=True, timeout=10
+            shell=True, capture_output=True, text=True
         )
         fps_str = r.stdout.strip()
         if '/' in fps_str:
@@ -115,48 +98,46 @@ def get_video_info(filepath):
 
         r = subprocess.run(
             f'ffprobe -v error -select_streams a:0 -show_entries stream=channels -of default=noprint_wrappers=1:nokey=1 "{filepath}"',
-            shell=True, capture_output=True, text=True, timeout=10
+            shell=True, capture_output=True, text=True
         )
         channels = int(r.stdout.strip()) if r.stdout.strip().isdigit() else 2
 
         return {"duration": duration, "fps": fps, "channels": channels}
-    except Exception as e:
-        print(f"Warning: Could not get video info: {e}")
+    except:
         return {"duration": 0, "fps": 0, "channels": 2}
 
 
 def get_input_container(filepath):
     """Detect the container format of the input file."""
-    if not os.path.exists(filepath):
-        return 'mkv'
-    
     try:
         r = subprocess.run(
             f'ffprobe -v error -show_entries format=format_name -of default=noprint_wrappers=1:nokey=1 "{filepath}"',
-            shell=True, capture_output=True, text=True, timeout=10
+            shell=True, capture_output=True, text=True
         )
-        format_name = r.stdout.strip().split(',')[0] if r.stdout.strip() else ''
+        format_name = r.stdout.strip().split(',')[0]  # Get first format
         if 'matroska' in format_name or 'mkv' in format_name:
             return 'mkv'
         elif 'mp4' in format_name or 'mov' in format_name:
             return 'mp4'
         else:
+            # Fallback: use file extension
             ext = os.path.splitext(filepath)[1].lower()
             if ext in ['.mkv', '.webm']:
                 return 'mkv'
             elif ext in ['.mp4', '.mov']:
                 return 'mp4'
-            return 'mkv'
-    except Exception:
+            return 'mkv'  # Default fallback
+    except:
+        # Fallback to extension
         ext = os.path.splitext(filepath)[1].lower()
         if ext in ['.mkv', '.webm']:
             return 'mkv'
         elif ext in ['.mp4', '.mov']:
             return 'mp4'
-        return 'mkv'
+        return 'mkv'  # Default fallback
 
 
-def convert_video(input_file, output_file, params, quality):
+def convert_video(input_file, output_file, params):
     """Convert video with real-time stderr output."""
     info = get_video_info(input_file)
     
@@ -169,21 +150,21 @@ def convert_video(input_file, output_file, params, quality):
     vf_parts.append(params["scale"])
     vf_filter = ",".join(vf_parts)
     
-    # Determine audio bitrate based on quality
-    audio_bitrate = "96k" if quality in ["480p-av1"] else "128k"
+    # Detect input container to handle subtitles appropriately
+    input_container = get_input_container(input_file)
     
     # Build ffmpeg command based on codec
     if params["codec"] == "libsvtav1":
-        # AV1 encoding - Keep video & audio tracks
+        # AV1 encoding - Keep video & audio tracks, convert all audio to 128k
+        # Skip subtitles to avoid container compatibility issues
         cmd = (
             f'ffmpeg -nostdin -i "{input_file}" '
             f'-map 0:v -map 0:a '  # Video + audio only (no subtitles)
             f'-c:v {params["codec"]} -vf "{vf_filter}" '
             f'-crf {params["crf"]} -preset {params["preset"]} '
             f'-pix_fmt {params["pix_fmt"]} '
-            f'-svtav1-params "tune=0:enable-overlays=1:enable-qm=1:qm-min=6:qm-max=15:enable-tf=1:scd=1" '
-            f'-c:a aac -b:a {audio_bitrate} '
-            f'-row-mt 1 '
+            f'-svtav1-params "tune=0:enable-overlays=1" '
+            f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
             f'-stats_period 10 -stats '
             f'"{output_file}" -y'
         )
@@ -194,15 +175,11 @@ def convert_video(input_file, output_file, params, quality):
             f'-map 0:v -map 0:a '  # Video + audio only (no subtitles)
             f'-c:v {params["codec"]} -vf "{vf_filter}" -preset {params["preset"]} '
             f'-crf {params["crf"]} -pix_fmt {params["pix_fmt"]} '
-            f'-c:a aac -b:a 128k '
+            f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
             f'-movflags +faststart '
             f'-stats_period 10 -stats '
             f'"{output_file}" -y'
         )
-    
-    print(f"Running FFmpeg command:")
-    print(f"  {cmd}")
-    print("")
     
     # Run with stderr piped for real-time display
     process = subprocess.Popen(
@@ -215,22 +192,7 @@ def convert_video(input_file, output_file, params, quality):
         print(line, end='', flush=True)
     
     process.wait()
-    
-    if process.returncode != 0:
-        print(f"FFmpeg exited with error code: {process.returncode}")
-        return process.returncode
-    
-    # Verify output file was created
-    if not os.path.exists(output_file):
-        print(f"Error: Output file {output_file} was not created")
-        return 1
-    
-    if os.path.getsize(output_file) == 0:
-        print(f"Error: Output file {output_file} is empty")
-        return 1
-    
-    print(f"Successfully created: {output_file} ({format_size(os.path.getsize(output_file))})")
-    return 0
+    return process.returncode
 
 
 def format_size(size_bytes):
@@ -251,57 +213,46 @@ def main():
         print("Error: VIDEO_URL environment variable not set")
         sys.exit(1)
     
-    # Clean output filename
-    output_filename = output_filename.strip()
-    if not output_filename:
-        output_filename = 'video'
+    # Don't force .mp4 - let the quality config determine the container
+    # Just make sure it has some extension
+    if '.' not in output_filename:
+        output_filename += '.mp4'  # fallback
     
     print("=" * 60)
     print("VIDEO DOWNLOAD AND CONVERTER")
     print("=" * 60)
-    print(f"Quality: {quality}")
-    print(f"Output filename base: {output_filename}\n")
+    print(f"Quality: {quality}\n")
     
     # Download
     temp_filename = f"temp_{output_filename}"
     if not download_video(video_url, temp_filename):
-        print("Download failed!")
-        sys.exit(1)
-    
-    # Check if temp file exists
-    if not os.path.exists(temp_filename) or os.path.getsize(temp_filename) == 0:
-        print(f"Error: Downloaded file {temp_filename} is missing or empty")
         sys.exit(1)
     
     # Handle original quality
     if quality == 'original':
         # Get original extension from temp file
         original_ext = os.path.splitext(temp_filename)[1]
-        base_name = os.path.splitext(output_filename)[0] if '.' in output_filename else output_filename
-        final_filename = f"{base_name}_original{original_ext}"
+        final_filename = output_filename.replace('.mp4', f'_original{original_ext}')
         os.rename(temp_filename, final_filename)
         info = get_video_info(final_filename)
         print(f"\nOriginal saved as: {final_filename}")
         print(f"Size: {format_size(os.path.getsize(final_filename))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
     
     # Handle conversion
-    elif quality in ['480p-av1', '720p-av1']:
+    elif quality in ['480p', '720p', '480p-av1', '720p-av1']:
         params = get_quality_params(quality)
         if not params:
             print(f"Error: Quality config not found for {quality}")
             sys.exit(1)
             
-        # Get container from params
+        # Get container from params or default to mkv for av1
         container = params.get('container', 'mkv')
-        # Make sure output_filename has an extension before replacing
-        base_name = os.path.splitext(output_filename)[0] if '.' in output_filename else output_filename
-        final_filename = f"{base_name}_{quality}.{container}"
+        final_filename = output_filename.replace('.mp4', f'_{quality}.{container}')
         
         info = get_video_info(temp_filename)
         print(f"\nSource: {format_size(os.path.getsize(temp_filename))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
         
-        audio_bitrate = "96k" if quality in ["480p-av1"] else "128k"
-        print(f"Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']} | Audio: {audio_bitrate}")
+        print(f"Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']}")
         
         if info["fps"] > params["max_fps"]:
             print(f"Capping FPS: {info['fps']:.2f} -> {params['max_fps']}")
@@ -313,15 +264,10 @@ def main():
         print(f"Input container: {input_container.upper()} | Output container: {container.upper()}")
         print(f"Converting with {params['codec']}...\n")
         
-        exit_code = convert_video(temp_filename, final_filename, params, quality)
+        exit_code = convert_video(temp_filename, final_filename, params)
         
         if exit_code != 0:
-            print(f"\nError converting to {quality} (exit code: {exit_code})")
-            sys.exit(1)
-        
-        # Verify final file exists
-        if not os.path.exists(final_filename) or os.path.getsize(final_filename) == 0:
-            print(f"Error: Output file {final_filename} was not created properly")
+            print(f"\nError converting to {quality}")
             sys.exit(1)
         
         new_info = get_video_info(final_filename)
@@ -335,16 +281,9 @@ def main():
     # Cleanup temp file
     if os.path.exists(temp_filename) and temp_filename != final_filename:
         os.remove(temp_filename)
-        print(f"Removed temp file: {temp_filename}")
-    
-    # Final verification
-    if not os.path.exists(final_filename):
-        print(f"Error: Final file {final_filename} not found!")
-        sys.exit(1)
     
     print("\n" + "=" * 60)
     print(f"Completed! Output: {final_filename}")
-    print(f"Final size: {format_size(os.path.getsize(final_filename))}")
     print("=" * 60)
 
 
