@@ -137,7 +137,7 @@ def get_input_container(filepath):
         return 'mkv'  # Default fallback
 
 
-def convert_video(input_file, output_file, params):
+def convert_video(input_file, output_file, params, quality):
     """Convert video with real-time stderr output."""
     info = get_video_info(input_file)
     
@@ -153,9 +153,12 @@ def convert_video(input_file, output_file, params):
     # Detect input container to handle subtitles appropriately
     input_container = get_input_container(input_file)
     
+    # Determine audio bitrate based on quality
+    audio_bitrate = "96k" if quality in ["480p-av1"] else "128k"
+    
     # Build ffmpeg command based on codec
     if params["codec"] == "libsvtav1":
-        # AV1 encoding - Keep video & audio tracks, convert all audio to 128k
+        # AV1 encoding - Keep video & audio tracks, convert all audio
         # Skip subtitles to avoid container compatibility issues
         cmd = (
             f'ffmpeg -nostdin -i "{input_file}" '
@@ -164,7 +167,7 @@ def convert_video(input_file, output_file, params):
             f'-crf {params["crf"]} -preset {params["preset"]} '
             f'-pix_fmt {params["pix_fmt"]} '
             f'-svtav1-params "tune=0:enable-overlays=1" '
-            f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
+            f'-c:a aac -b:a {audio_bitrate} '  # 96k for 480p, 128k for 720p
             f'-stats_period 10 -stats '
             f'"{output_file}" -y'
         )
@@ -252,7 +255,9 @@ def main():
         info = get_video_info(temp_filename)
         print(f"\nSource: {format_size(os.path.getsize(temp_filename))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
         
-        print(f"Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']}")
+        # Determine audio bitrate for display
+        audio_bitrate = "96k" if quality in ["480p-av1"] else "128k"
+        print(f"Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']} | Audio: {audio_bitrate}")
         
         if info["fps"] > params["max_fps"]:
             print(f"Capping FPS: {info['fps']:.2f} -> {params['max_fps']}")
@@ -264,7 +269,7 @@ def main():
         print(f"Input container: {input_container.upper()} | Output container: {container.upper()}")
         print(f"Converting with {params['codec']}...\n")
         
-        exit_code = convert_video(temp_filename, final_filename, params)
+        exit_code = convert_video(temp_filename, final_filename, params, quality)
         
         if exit_code != 0:
             print(f"\nError converting to {quality}")
