@@ -217,9 +217,12 @@ def main():
         sys.exit(1)
     
     # Don't force .mp4 - let the quality config determine the container
-    # Just make sure it has some extension
+    # Just make sure it has some extension for the temp file
     if '.' not in output_filename:
-        output_filename += '.mp4'  # fallback
+        output_filename += '.mp4'  # fallback for temp file
+    
+    # Store base name for final output (without extension)
+    base_name = os.path.splitext(output_filename)[0]
     
     print("=" * 60)
     print("VIDEO DOWNLOAD AND CONVERTER")
@@ -235,7 +238,7 @@ def main():
     if quality == 'original':
         # Get original extension from temp file
         original_ext = os.path.splitext(temp_filename)[1]
-        final_filename = output_filename.replace('.mp4', f'_original{original_ext}')
+        final_filename = f"{base_name}_original{original_ext}"
         os.rename(temp_filename, final_filename)
         info = get_video_info(final_filename)
         print(f"\nOriginal saved as: {final_filename}")
@@ -250,7 +253,7 @@ def main():
             
         # Get container from params or default to mkv for av1
         container = params.get('container', 'mkv')
-        final_filename = output_filename.replace('.mp4', f'_{quality}.{container}')
+        final_filename = f"{base_name}_{quality}.{container}"
         
         info = get_video_info(temp_filename)
         print(f"\nSource: {format_size(os.path.getsize(temp_filename))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
@@ -290,7 +293,6 @@ def main():
     print("\n" + "=" * 60)
     print(f"Completed! Output: {final_filename}")
     print("=" * 60)
-
 
 if __name__ == "__main__":
     main()
