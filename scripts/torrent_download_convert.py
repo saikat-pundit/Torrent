@@ -151,7 +151,7 @@ def convert_video(input_file, output_file, params, quality):
         f'-pix_fmt {params["pix_fmt"]} '
         f'-svtav1-params "tune=0:enable-overlays=1:enable-qm=1:qm-min=6:qm-max=15:enable-tf=1:scd=1" '
         f'-c:a aac -b:a {audio_bitrate} '  # 96k for 480p, 128k for 720p
-        f'-c:s copy '  # Keep ALL subtitles (no re-encoding)
+        f'-c:s mov_text '  # Convert subtitles to mov_text (MKV compatible)
         f'-row-mt 1 '
         f'-stats_period 10 -stats '
         f'"{output_file}" -y'
@@ -169,7 +169,6 @@ def convert_video(input_file, output_file, params, quality):
     
     process.wait()
     return process.returncode
-
 
 def format_size(size_bytes):
     """Convert bytes to human-readable size."""
