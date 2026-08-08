@@ -27,10 +27,18 @@ def download_torrent(magnet, download_dir):
     os.makedirs(download_dir, exist_ok=True)
     
     cmd = (
-        f"aria2c --seed-time=0 --max-connection-per-server=16 --split=16 "
-        f"--dir={download_dir} --console-log-level=notice --summary-interval=10 "
-        f"--show-console-readout=true --human-readable=true \"{magnet}\""
-    )
+    f'ffmpeg -nostdin -i "{input_file}" '
+    f'-map 0:v -map 0:a -map 0:s? '
+    f'-c:v {params["codec"]} -vf "{vf_filter}" '
+    f'-crf {params["crf"]} -preset {params["preset"]} '
+    f'-pix_fmt {params["pix_fmt"]} '
+    f'-svtav1-params "tune=0:enable-overlays=1:enable-qm=1:qm-min=6:qm-max=15:enable-tf=1:scd=1" '
+    f'-c:a aac -b:a 96k '
+    f'-c:s copy '
+    f'-row-mt 1 '
+    f'-stats_period 10 -stats '
+    f'"{output_file}" -y'
+)
     
     result = subprocess.run(cmd, shell=True, check=False)
     if result.returncode != 0:
