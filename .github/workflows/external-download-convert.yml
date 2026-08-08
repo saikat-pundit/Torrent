@@ -18,7 +18,7 @@ on:
         description: 'Video Quality'
         required: true
         type: choice
-        default: 'original'
+        default: '480p-av1'
         options:
           - 'original'
           - '480p-av1'
@@ -27,7 +27,7 @@ on:
         description: 'Upload to'
         required: true
         type: choice
-        default: 'artifacts'
+        default: 'relase'
         options:
           - 'artifacts'
           - 'release'
