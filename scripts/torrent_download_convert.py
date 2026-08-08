@@ -125,6 +125,21 @@ def get_video_info(filepath):
         return {"duration": 0, "fps": 0, "channels": 2}
 
 
+def get_subtitle_codec(filepath):
+    """Detect subtitle codec and return appropriate conversion."""
+    try:
+        r = run(f'ffprobe -v error -select_streams s:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "{filepath}"')
+        codec = r.stdout.strip()
+        
+        # mov_text is not supported in MKV, convert to srt or ass
+        if codec == 'mov_text':
+            return 'srt'  # Convert to srt (supported by MKV)
+        else:
+            return 'copy'  # Keep original if supported
+    except:
+        return 'copy'  # Default to copy if detection fails
+
+
 def convert_video(input_file, output_file, params, quality):
     """Convert video to AV1 with real-time stderr output."""
     info = get_video_info(input_file)
@@ -142,17 +157,28 @@ def convert_video(input_file, output_file, params, quality):
     # Determine audio bitrate based on quality
     audio_bitrate = "96k" if quality == "480p-av1" else "128k"
     
+    # Determine subtitle handling
+    subtitle_codec = get_subtitle_codec(input_file)
+    
+    # Build subtitle mapping and codec based on detection
+    if subtitle_codec == 'copy':
+        subtitle_map = '-map 0:s?'
+        subtitle_codec_param = '-c:s copy'
+    else:
+        # Convert mov_text to srt (supported by MKV)
+        subtitle_map = '-map 0:s?'
+        subtitle_codec_param = '-c:s srt'
+    
     # SVT-AV1 encoding - Keep ALL audio & subtitle tracks
     cmd = (
         f'ffmpeg -nostdin -i "{input_file}" '
-        f'-map 0:v -map 0:a -map 0:s? '  # Keep all video, audio, subtitle tracks
+        f'-map 0:v -map 0:a {subtitle_map} '  # Keep all video, audio, subtitle tracks
         f'-c:v {params["codec"]} -vf "{vf_filter}" '
         f'-crf {params["crf"]} -preset {params["preset"]} '
         f'-pix_fmt {params["pix_fmt"]} '
         f'-svtav1-params "tune=0:enable-overlays=1:enable-qm=1:qm-min=6:qm-max=15:enable-tf=1:scd=1" '
         f'-c:a aac -b:a {audio_bitrate} '  # 96k for 480p, 128k for 720p
-        f'-c:s mov_text '  # Convert subtitles to mov_text (MKV compatible)
-        f'-row-mt 1 '
+        f'{subtitle_codec_param} '  # Convert or copy subtitles based on detection
         f'-stats_period 10 -stats '
         f'"{output_file}" -y'
     )
@@ -169,6 +195,7 @@ def convert_video(input_file, output_file, params, quality):
     
     process.wait()
     return process.returncode
+
 
 def format_size(size_bytes):
     """Convert bytes to human-readable size."""
@@ -242,6 +269,13 @@ def main():
         # Show audio bitrate
         audio_bitrate = "96k" if quality == "480p-av1" else "128k"
         print(f"  Audio bitrate: {audio_bitrate}")
+        
+        # Show subtitle handling
+        subtitle_codec = get_subtitle_codec(video)
+        if subtitle_codec == 'copy':
+            print(f"  Subtitles: Keeping original format")
+        else:
+            print(f"  Subtitles: Converting {subtitle_codec} to SRT for MKV compatibility")
         
         print(f"  Converting with {params['codec']}...")
         
