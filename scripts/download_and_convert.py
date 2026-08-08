@@ -59,18 +59,18 @@ def get_quality_params(quality):
             "max_fps": 25,
             "codec": "libsvtav1",
             "description": "AV1 480p",
-            "container": "mkv"  # AV1 works better with MKV container
+            "container": "mkv"
         },
         "720p-av1": {
             "scale": "scale=1280:-2",
             "crf": "34",
             "preset": "8",
-            "pix_fmt": "yuv420p",
+            "pix_fmt": "yuv420p10le",
             "x265_opts": "",
-            "max_fps": 27,
+            "max_fps": 30,
             "codec": "libsvtav1",
             "description": "AV1 720p",
-            "container": "mkv"  # AV1 works better with MKV container
+            "container": "mkv"
         }
     }
     return configs.get(quality)
@@ -114,30 +114,28 @@ def get_input_container(filepath):
             f'ffprobe -v error -show_entries format=format_name -of default=noprint_wrappers=1:nokey=1 "{filepath}"',
             shell=True, capture_output=True, text=True
         )
-        format_name = r.stdout.strip().split(',')[0]  # Get first format
+        format_name = r.stdout.strip().split(',')[0]
         if 'matroska' in format_name or 'mkv' in format_name:
             return 'mkv'
         elif 'mp4' in format_name or 'mov' in format_name:
             return 'mp4'
         else:
-            # Fallback: use file extension
             ext = os.path.splitext(filepath)[1].lower()
             if ext in ['.mkv', '.webm']:
                 return 'mkv'
             elif ext in ['.mp4', '.mov']:
                 return 'mp4'
-            return 'mkv'  # Default fallback
+            return 'mkv'
     except:
-        # Fallback to extension
         ext = os.path.splitext(filepath)[1].lower()
         if ext in ['.mkv', '.webm']:
             return 'mkv'
         elif ext in ['.mp4', '.mov']:
             return 'mp4'
-        return 'mkv'  # Default fallback
+        return 'mkv'
 
 
-def convert_video(input_file, output_file, params):
+def convert_video(input_file, output_file, params, quality):
     """Convert video with real-time stderr output."""
     info = get_video_info(input_file)
     
@@ -153,36 +151,36 @@ def convert_video(input_file, output_file, params):
     # Detect input container to handle subtitles appropriately
     input_container = get_input_container(input_file)
     
-    # Build ffmpeg command based on codec
-    if params["codec"] == "libsvtav1":
     # Determine audio bitrate based on quality
     audio_bitrate = "96k" if quality in ["480p-av1"] else "128k"
     
-    # AV1 encoding - Keep video & audio tracks
-    cmd = (
-        f'ffmpeg -nostdin -i "{input_file}" '
-        f'-map 0:v -map 0:a '  # Video + audio only (no subtitles)
-        f'-c:v {params["codec"]} -vf "{vf_filter}" '
-        f'-crf {params["crf"]} -preset {params["preset"]} '
-        f'-pix_fmt {params["pix_fmt"]} '
-        f'-svtav1-params "tune=0:enable-overlays=1:enable-qm=1:qm-min=6:qm-max=15:enable-tf=1:scd=1" '
-        f'-c:a aac -b:a {audio_bitrate} '  # 96k for 480p, 128k for 720p
-        f'-row-mt 1 '
-        f'-stats_period 10 -stats '
-        f'"{output_file}" -y'
-    )
-else:
-    # H.264 encoding - Keep video & audio tracks
-    cmd = (
-        f'ffmpeg -nostdin -i "{input_file}" '
-        f'-map 0:v -map 0:a '  # Video + audio only (no subtitles)
-        f'-c:v {params["codec"]} -vf "{vf_filter}" -preset {params["preset"]} '
-        f'-crf {params["crf"]} -pix_fmt {params["pix_fmt"]} '
-        f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
-        f'-movflags +faststart '
-        f'-stats_period 10 -stats '
-        f'"{output_file}" -y'
-    )
+    # Build ffmpeg command based on codec
+    if params["codec"] == "libsvtav1":
+        # AV1 encoding - Keep video & audio tracks
+        cmd = (
+            f'ffmpeg -nostdin -i "{input_file}" '
+            f'-map 0:v -map 0:a '  # Video + audio only (no subtitles)
+            f'-c:v {params["codec"]} -vf "{vf_filter}" '
+            f'-crf {params["crf"]} -preset {params["preset"]} '
+            f'-pix_fmt {params["pix_fmt"]} '
+            f'-svtav1-params "tune=0:enable-overlays=1:enable-qm=1:qm-min=6:qm-max=15:enable-tf=1:scd=1" '
+            f'-c:a aac -b:a {audio_bitrate} '  # 96k for 480p, 128k for 720p
+            f'-row-mt 1 '
+            f'-stats_period 10 -stats '
+            f'"{output_file}" -y'
+        )
+    else:
+        # H.264 encoding - Keep video & audio tracks
+        cmd = (
+            f'ffmpeg -nostdin -i "{input_file}" '
+            f'-map 0:v -map 0:a '  # Video + audio only (no subtitles)
+            f'-c:v {params["codec"]} -vf "{vf_filter}" -preset {params["preset"]} '
+            f'-crf {params["crf"]} -pix_fmt {params["pix_fmt"]} '
+            f'-c:a aac -b:a 128k '  # Convert ALL audio tracks to 128k AAC
+            f'-movflags +faststart '
+            f'-stats_period 10 -stats '
+            f'"{output_file}" -y'
+        )
     
     # Run with stderr piped for real-time display
     process = subprocess.Popen(
@@ -259,7 +257,7 @@ def main():
         print(f"\nSource: {format_size(os.path.getsize(temp_filename))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
         
         audio_bitrate = "96k" if quality in ["480p-av1"] else "128k"
-print(f"Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']} | Audio: {audio_bitrate}")
+        print(f"Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']} | Audio: {audio_bitrate}")
         
         if info["fps"] > params["max_fps"]:
             print(f"Capping FPS: {info['fps']:.2f} -> {params['max_fps']}")
@@ -271,7 +269,7 @@ print(f"Settings: {params['description']} | CRF: {params['crf']} | Preset: {para
         print(f"Input container: {input_container.upper()} | Output container: {container.upper()}")
         print(f"Converting with {params['codec']}...\n")
         
-        exit_code = convert_video(temp_filename, final_filename, params)
+        exit_code = convert_video(temp_filename, final_filename, params, quality)
         
         if exit_code != 0:
             print(f"\nError converting to {quality}")
