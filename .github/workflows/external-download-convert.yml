@@ -18,7 +18,7 @@ on:
         description: 'Video Quality'
         required: true
         type: choice
-        default: 'original'
+        default: '480p-av1'
         options:
           - 'original'
           - '480p-av1'
@@ -27,7 +27,7 @@ on:
         description: 'Upload to'
         required: true
         type: choice
-        default: 'artifacts'
+        default: 'release'
         options:
           - 'artifacts'
           - 'release'
@@ -87,13 +87,6 @@ jobs:
       run: |
         python scripts/download_and_convert.py
     
-    - name: List generated files
-      run: |
-        echo "Generated files:"
-        ls -la *.mp4 *.mkv 2>/dev/null || echo "No video files found"
-        echo "Current directory contents:"
-        ls -la
-    
     - name: Upload to Artifacts
       if: ${{ github.event.inputs.upload_to == 'artifacts' }}
       uses: actions/upload-artifact@v4
@@ -109,7 +102,8 @@ jobs:
       with:
         tag_name: Movie
         files: |
-          ${{ github.event.inputs.output_filename }}_*.{mp4,mkv}
+          ${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.*
+          ${{ github.event.inputs.output_filename }}_original.*
         fail_on_unmatched_files: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
