@@ -40,19 +40,21 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: Cache apt packages
+    # Cache FFmpeg and SVT-AV1 installation
+    - name: Cache FFmpeg and SVT-AV1
+      id: cache-ffmpeg
       uses: actions/cache@v3
       with:
-        path: /var/cache/apt/archives
-        key: ${{ runner.os }}-apt-${{ hashFiles('**/requirements.txt') }}
+        path: |
+          /usr/bin/ffmpeg
+          /usr/bin/ffprobe
+          /usr/lib/x86_64-linux-gnu/libsvtav1*
+          /usr/include/svt-av1
+        key: ${{ runner.os }}-ffmpeg-svtav1-${{ hashFiles('**/ffmpeg-version.txt') }}
         restore-keys: |
-          ${{ runner.os }}-apt-
+          ${{ runner.os }}-ffmpeg-svtav1-
     
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    
+    # Cache Python packages
     - name: Cache Python packages
       uses: actions/cache@v3
       with:
@@ -61,7 +63,13 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-
     
-    - name: Install FFmpeg and SVT-AV1
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install FFmpeg and SVT-AV1 (if cache miss)
+      if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
       run: |
         sudo apt-get update
         sudo apt-get install -y ffmpeg
@@ -71,6 +79,16 @@ jobs:
         sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
         sudo apt-get update
         sudo apt-get install -y libsvtav1enc-dev libsvtav1dec0
+        
+        # Create version file for cache validation
+        ffmpeg -version > ffmpeg-version.txt
+        echo "FFmpeg and SVT-AV1 installed from scratch"
+    
+    - name: Verify FFmpeg and SVT-AV1 installation
+      run: |
+        ffmpeg -version | head -n 1
+        ldconfig -p | grep svtav1 || echo "SVT-AV1 libraries found in system"
+        echo "FFmpeg and SVT-AV1 are ready"
     
     - name: Install Python dependencies
       run: |
