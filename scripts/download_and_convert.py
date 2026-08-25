@@ -3,6 +3,9 @@ import sys
 import subprocess
 import requests
 import time
+import zipfile
+import tempfile
+import shutil
 from pathlib import Path
 
 
@@ -45,6 +48,35 @@ def download_video(url, output_filename):
     speed = downloaded / elapsed if elapsed > 0 else 0
     print(f"Download complete: {format_size(downloaded)} in {elapsed:.1f}s ({format_size(speed)}/s)")
     return True
+
+
+def is_zip_file(filepath):
+    """Check if file is a ZIP archive."""
+    return zipfile.is_zipfile(filepath)
+
+
+def extract_zip(zip_path, extract_to):
+    """Extract ZIP file contents."""
+    print(f"\nExtracting ZIP: {os.path.basename(zip_path)}")
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall(extract_to)
+        file_list = zip_ref.namelist()
+        print(f"Extracted {len(file_list)} files")
+        return file_list
+
+
+def find_video_files(directory):
+    """Find all video files in a directory."""
+    video_extensions = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp', '.mpeg', '.mpg'}
+    video_files = []
+    
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            ext = os.path.splitext(file)[1].lower()
+            if ext in video_extensions:
+                video_files.append(os.path.join(root, file))
+    
+    return video_files
 
 
 def get_quality_params(quality):
@@ -143,6 +175,109 @@ def convert_video(input_file, output_file, params, quality):
     return process.returncode
 
 
+def create_zip(zip_path, source_dir):
+    """Create a ZIP file from directory contents."""
+    print(f"\nCreating ZIP: {os.path.basename(zip_path)}")
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirs, files in os.walk(source_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, source_dir)
+                zipf.write(file_path, arcname)
+                print(f"  Added: {arcname}")
+    
+    size = os.path.getsize(zip_path)
+    print(f"ZIP created: {format_size(size)}")
+    return zip_path
+
+
+def process_zip_contents(zip_path, quality, output_base_name):
+    """Process videos inside a ZIP file."""
+    # Create temporary directory for extraction
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Extract ZIP
+        extract_dir = os.path.join(temp_dir, 'extracted')
+        os.makedirs(extract_dir, exist_ok=True)
+        extract_zip(zip_path, extract_dir)
+        
+        # Find video files
+        video_files = find_video_files(extract_dir)
+        
+        if not video_files:
+            print("No video files found in the ZIP archive!")
+            return None
+        
+        print(f"\nFound {len(video_files)} video file(s) in ZIP")
+        
+        # If quality is original and only one video, just rename the ZIP
+        if quality == 'original':
+            # Keep original files, just repack with _original suffix
+            final_zip_name = f"{output_base_name}_original.zip"
+            # Copy and rename the original ZIP
+            shutil.copy2(zip_path, final_zip_name)
+            print(f"\nOriginal ZIP preserved as: {final_zip_name}")
+            return final_zip_name
+        
+        # Get quality params
+        params = get_quality_params(quality)
+        if not params:
+            print(f"Error: Quality config not found for {quality}")
+            return None
+        
+        # Create converted directory
+        converted_dir = os.path.join(temp_dir, 'converted')
+        os.makedirs(converted_dir, exist_ok=True)
+        
+        print(f"\nConverting {len(video_files)} video(s) to {params['description']}...")
+        
+        for idx, video_file in enumerate(video_files):
+            # Get relative path to preserve structure
+            rel_path = os.path.relpath(video_file, extract_dir)
+            rel_dir = os.path.dirname(rel_path)
+            
+            # Create subdirectory structure in converted dir
+            if rel_dir != '.':
+                target_dir = os.path.join(converted_dir, rel_dir)
+                os.makedirs(target_dir, exist_ok=True)
+            else:
+                target_dir = converted_dir
+            
+            # Get base filename without extension
+            base_filename = os.path.splitext(os.path.basename(video_file))[0]
+            
+            # Convert video
+            container = params.get('container', 'mkv')
+            output_file = os.path.join(target_dir, f"{base_filename}.{container}")
+            
+            # Get source info
+            info = get_video_info(video_file)
+            print(f"\n[{idx+1}/{len(video_files)}] Processing: {os.path.basename(video_file)}")
+            print(f"  Source: {format_size(os.path.getsize(video_file))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
+            print(f"  Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']}")
+            
+            if info["fps"] > params["max_fps"]:
+                print(f"  Capping FPS: {info['fps']:.2f} -> {params['max_fps']}")
+            else:
+                print(f"  Keeping original FPS: {info['fps']:.2f}")
+            
+            exit_code = convert_video(video_file, output_file, params, quality)
+            
+            if exit_code != 0:
+                print(f"Error converting {os.path.basename(video_file)}")
+                return None
+            
+            new_info = get_video_info(output_file)
+            print(f"  Converted: {os.path.basename(output_file)}")
+            print(f"  Size: {format_size(os.path.getsize(output_file))} | Duration: {int(new_info['duration']//60)}m{int(new_info['duration']%60)}s | FPS: {new_info['fps']:.2f}")
+        
+        # Create final ZIP with converted videos
+        final_zip_name = f"{output_base_name}_{quality}.zip"
+        final_zip_path = os.path.join(os.getcwd(), final_zip_name)
+        
+        create_zip(final_zip_path, converted_dir)
+        return final_zip_name
+
+
 def format_size(size_bytes):
     """Convert bytes to human-readable size."""
     if size_bytes == 0:
@@ -166,73 +301,96 @@ def main():
     # Use the user-provided filename as the base name (preserve dots)
     base_name = output_filename
     
-    # Create temporary filename for download
-    temp_filename = f"temp_{base_name}.mp4"
-    
     print("=" * 60)
     print("VIDEO DOWNLOAD AND CONVERTER")
     print("=" * 60)
     print(f"Base name: {base_name}")
     print(f"Quality: {quality}\n")
     
-    # Download
+    # Download file (could be video or ZIP)
+    temp_filename = f"temp_{base_name}"
+    
     if not download_video(video_url, temp_filename):
         print("Download failed!")
         sys.exit(1)
     
-    # Handle original quality
-    if quality == 'original':
-        # Get original extension from temp file
-        original_ext = os.path.splitext(temp_filename)[1]
-        final_filename = f"{base_name}_original{original_ext}"
-        os.rename(temp_filename, final_filename)
-        info = get_video_info(final_filename)
-        print(f"\nOriginal saved as: {final_filename}")
-        print(f"Size: {format_size(os.path.getsize(final_filename))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
-        output_file = final_filename
-    
-    # Handle conversion
-    elif quality in ['480p-av1', '720p-av1']:
-        params = get_quality_params(quality)
-        if not params:
-            print(f"Error: Quality config not found for {quality}")
-            sys.exit(1)
-            
-        # Get container from params
-        container = params.get('container', 'mkv')
-        final_filename = f"{base_name}_{quality}.{container}"
+    # Check if downloaded file is a ZIP
+    if is_zip_file(temp_filename):
+        print(f"\nDetected ZIP archive: {temp_filename}")
         
-        info = get_video_info(temp_filename)
-        print(f"\nSource: {format_size(os.path.getsize(temp_filename))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
+        # Process ZIP contents
+        result = process_zip_contents(temp_filename, quality, base_name)
         
-        print(f"Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']} | Audio: {params['audio_bitrate']}")
-        
-        if info["fps"] > params["max_fps"]:
-            print(f"Capping FPS: {info['fps']:.2f} -> {params['max_fps']}")
-        else:
-            print(f"Keeping original FPS: {info['fps']:.2f}")
-        
-        print(f"Output container: {container.upper()}")
-        print(f"Converting with {params['codec']}...\n")
-        
-        exit_code = convert_video(temp_filename, final_filename, params, quality)
-        
-        if exit_code != 0:
-            print(f"\nError converting to {quality}")
+        if not result:
+            print("Failed to process ZIP contents!")
             sys.exit(1)
         
-        new_info = get_video_info(final_filename)
-        print(f"\nConverted: {final_filename}")
-        print(f"Size: {format_size(os.path.getsize(final_filename))} | Duration: {int(new_info['duration']//60)}m{int(new_info['duration']%60)}s | FPS: {new_info['fps']:.2f}")
-        output_file = final_filename
+        output_file = result
+        
+        # Cleanup temp file
+        if os.path.exists(temp_filename):
+            os.remove(temp_filename)
     
     else:
-        print(f"Unknown quality: {quality}")
-        sys.exit(1)
-    
-    # Cleanup temp file
-    if os.path.exists(temp_filename) and temp_filename != output_file:
-        os.remove(temp_filename)
+        # Handle single video file (original behavior)
+        print(f"\nSingle file detected (not ZIP)")
+        
+        # Determine file extension
+        original_ext = os.path.splitext(temp_filename)[1]
+        if not original_ext:
+            original_ext = '.mp4'  # Default
+        
+        # Handle original quality
+        if quality == 'original':
+            final_filename = f"{base_name}_original{original_ext}"
+            os.rename(temp_filename, final_filename)
+            info = get_video_info(final_filename)
+            print(f"\nOriginal saved as: {final_filename}")
+            print(f"Size: {format_size(os.path.getsize(final_filename))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
+            output_file = final_filename
+        
+        # Handle conversion
+        elif quality in ['480p-av1', '720p-av1']:
+            params = get_quality_params(quality)
+            if not params:
+                print(f"Error: Quality config not found for {quality}")
+                sys.exit(1)
+                
+            # Get container from params
+            container = params.get('container', 'mkv')
+            final_filename = f"{base_name}_{quality}.{container}"
+            
+            info = get_video_info(temp_filename)
+            print(f"\nSource: {format_size(os.path.getsize(temp_filename))} | Duration: {int(info['duration']//60)}m{int(info['duration']%60)}s | FPS: {info['fps']:.2f}")
+            
+            print(f"Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']} | Audio: {params['audio_bitrate']}")
+            
+            if info["fps"] > params["max_fps"]:
+                print(f"Capping FPS: {info['fps']:.2f} -> {params['max_fps']}")
+            else:
+                print(f"Keeping original FPS: {info['fps']:.2f}")
+            
+            print(f"Output container: {container.upper()}")
+            print(f"Converting with {params['codec']}...\n")
+            
+            exit_code = convert_video(temp_filename, final_filename, params, quality)
+            
+            if exit_code != 0:
+                print(f"\nError converting to {quality}")
+                sys.exit(1)
+            
+            new_info = get_video_info(final_filename)
+            print(f"\nConverted: {final_filename}")
+            print(f"Size: {format_size(os.path.getsize(final_filename))} | Duration: {int(new_info['duration']//60)}m{int(new_info['duration']%60)}s | FPS: {new_info['fps']:.2f}")
+            output_file = final_filename
+        
+        else:
+            print(f"Unknown quality: {quality}")
+            sys.exit(1)
+        
+        # Cleanup temp file
+        if os.path.exists(temp_filename) and temp_filename != output_file:
+            os.remove(temp_filename)
     
     print("\n" + "=" * 60)
     print(f"Completed! Output: {output_file}")
