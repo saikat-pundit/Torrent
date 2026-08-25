@@ -78,12 +78,6 @@ jobs:
         if [ -f "requirements.txt" ]; then
           pip install -r requirements.txt
         fi
-      # Add requests if not in requirements.txt
-      continue-on-error: true
-    
-    - name: Install Python requests if missing
-      run: |
-        pip install requests
     
     - name: Run video download and conversion
       env:
@@ -93,41 +87,14 @@ jobs:
       run: |
         python scripts/download_and_convert.py
     
-    - name: Get Output Filename
-      id: get_output
-      run: |
-        if [ -f "output_filename.txt" ]; then
-          output=$(cat output_filename.txt)
-          echo "output_filename=$output" >> $GITHUB_OUTPUT
-          echo "Found output: $output"
-        else
-          # Fallback to guessing the filename
-          if [ "${{ github.event.inputs.quality }}" == "original" ]; then
-            echo "output_filename=${{ github.event.inputs.output_filename }}_original.zip" >> $GITHUB_OUTPUT
-          else
-            echo "output_filename=${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.zip" >> $GITHUB_OUTPUT
-          fi
-          echo "No output_filename.txt found, using guessed filename"
-        fi
-    
-    - name: List files for debugging
-      run: |
-        echo "Current directory contents:"
-        ls -la
-        echo ""
-        echo "Looking for output files:"
-        find . -name "${{ github.event.inputs.output_filename }}*" -type f 2>/dev/null || echo "No files found"
-
     - name: Upload to Artifacts
       if: ${{ github.event.inputs.upload_to == 'artifacts' }}
       uses: actions/upload-artifact@v4
       with:
         name: ${{ github.event.inputs.output_filename }}-${{ github.event.inputs.quality }}
         path: |
-          ${{ steps.get_output.outputs.output_filename }}
           ${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.*
-          ${{ github.event.inputs.output_filename }}_original.*
-        if-no-files-found: warn
+        if-no-files-found: error
     
     - name: Upload to Release
       if: ${{ github.event.inputs.upload_to == 'release' }}
@@ -135,7 +102,6 @@ jobs:
       with:
         tag_name: Movie
         files: |
-          ${{ steps.get_output.outputs.output_filename }}
           ${{ github.event.inputs.output_filename }}_${{ github.event.inputs.quality }}.*
           ${{ github.event.inputs.output_filename }}_original.*
         fail_on_unmatched_files: false
