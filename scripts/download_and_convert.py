@@ -155,7 +155,7 @@ def convert_video(input_file, output_file, params, quality):
         f'-c:v {params["codec"]} -vf "{vf_filter}" '
         f'-crf {params["crf"]} -preset {params["preset"]} '
         f'-pix_fmt {params["pix_fmt"]} '
-        f'-svtav1-params "tune=0:enable-overlays=1" '
+        f'-svtav1-params "tune=0:enable-overlays=1:enable-tf=0" '
         f'-c:a aac -b:a {params["audio_bitrate"]} '
         f'-stats_period 10 -stats '
         f'"{output_file}" -y'
