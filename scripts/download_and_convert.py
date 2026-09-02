@@ -143,7 +143,7 @@ def convert_video(input_file, output_file, params, quality):
     vf_parts = []
     
     if info["fps"] > 0 and info["fps"] > params["max_fps"]:
-        vf_parts.append(f"fps={params['max_fps']}")
+    vf_parts.append(f"fps={int(params['max_fps'])}")
     
     vf_parts.append(params["scale"])
     vf_filter = ",".join(vf_parts)
