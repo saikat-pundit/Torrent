@@ -256,7 +256,7 @@ def process_zip_contents(zip_path, quality, output_base_name):
             print(f"  Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']}")
             
             if info["fps"] > params["max_fps"]:
-                print(f"  Capping FPS: {info['fps']:.2f} -> {params['max_fps']}")
+                print(f"  Capping FPS: {info['fps']:.2f} -> {int(params['max_fps'])}")
             else:
                 print(f"  Keeping original FPS: {info['fps']:.2f}")
             
