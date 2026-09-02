@@ -86,7 +86,7 @@ def get_quality_params(quality):
             "scale": "scale=854:-2",
             "crf": "37",
             "preset": "7",
-            "pix_fmt": "yuv420p10le",
+            "pix_fmt": "yuv420p",
             "max_fps": 25,
             "codec": "libsvtav1",
             "description": "AV1 480p",
@@ -155,7 +155,6 @@ def convert_video(input_file, output_file, params, quality):
         f'-c:v {params["codec"]} -vf "{vf_filter}" '
         f'-crf {params["crf"]} -preset {params["preset"]} '
         f'-pix_fmt {params["pix_fmt"]} '
-        f'-svtav1-params "tune=0:enable-overlays=1:enable-tf=0" '
         f'-c:a aac -b:a {params["audio_bitrate"]} '
         f'-stats_period 10 -stats '
         f'"{output_file}" -y'
@@ -256,7 +255,7 @@ def process_zip_contents(zip_path, quality, output_base_name):
             print(f"  Settings: {params['description']} | CRF: {params['crf']} | Preset: {params['preset']} | Max FPS: {params['max_fps']}")
             
             if info["fps"] > params["max_fps"]:
-                print(f"  Capping FPS: {info['fps']:.2f} -> {int(params['max_fps'])}")
+                print(f"  Capping FPS: {info['fps']:.2f} -> {params['max_fps']}")
             else:
                 print(f"  Keeping original FPS: {info['fps']:.2f}")
             
