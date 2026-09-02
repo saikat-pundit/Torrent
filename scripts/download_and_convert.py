@@ -151,14 +151,14 @@ def convert_video(input_file, output_file, params, quality):
     # Build ffmpeg command
     cmd = (
         f'ffmpeg -nostdin -i "{input_file}" '
-        f'-map 0:v -map 0:a '
+        f'-map 0:v:0 -map 0:a '
         f'-c:v {params["codec"]} -vf "{vf_filter}" '
         f'-crf {params["crf"]} -preset {params["preset"]} '
         f'-pix_fmt {params["pix_fmt"]} '
         f'-c:a aac -b:a {params["audio_bitrate"]} '
         f'-stats_period 10 -stats '
         f'"{output_file}" -y'
-    )
+        )
     
     # Run with stderr piped for real-time display
     process = subprocess.Popen(
