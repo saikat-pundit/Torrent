@@ -172,7 +172,7 @@ def convert_video(input_file, output_file, params, quality):
     # SVT-AV1 encoding - Keep ALL audio & subtitle tracks
     cmd = (
         f'ffmpeg -nostdin -i "{input_file}" '
-        f'-map 0:v -map 0:a {subtitle_map} '  # Keep all video, audio, subtitle tracks
+        f'-map 0:v:0 -map 0:a {subtitle_map} '  # Keep all video, audio, subtitle tracks
         f'-c:v {params["codec"]} -vf "{vf_filter}" '
         f'-crf {params["crf"]} -preset {params["preset"]} '
         f'-pix_fmt {params["pix_fmt"]} '
