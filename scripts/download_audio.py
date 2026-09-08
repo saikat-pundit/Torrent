@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import sys
 import json
@@ -5,7 +6,7 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 
-def download_audio(url):
+def download_audio(url, cookies_file=None):
     try:
         subprocess.run(["yt-dlp", "--version"], capture_output=True, check=True)
     except:
@@ -20,8 +21,12 @@ def download_audio(url):
         "--output", "%(title)s.%(ext)s",
         "--quiet",
         "--no-warnings",
-        url
     ]
+    
+    if cookies_file and os.path.exists(cookies_file):
+        opts.extend(["--cookies", cookies_file])
+    
+    opts.append(url)
     
     result = subprocess.run(opts, capture_output=True, text=True)
     if result.returncode != 0:
@@ -35,11 +40,15 @@ def download_audio(url):
     return str(max(audio_files, key=lambda f: f.stat().st_mtime))
 
 def main():
-    url = os.environ.get("YOUTUBE_URL") or (sys.argv[1] if len(sys.argv) > 1 else None)
+    url = os.environ.get("YOUTUBE_URL")
+    cookies = os.environ.get("COOKIES_FILE")
+    
+    if not url and len(sys.argv) > 1:
+        url = sys.argv[1]
     if not url:
         sys.exit(1)
     
-    audio_file = download_audio(url)
+    audio_file = download_audio(url, cookies)
     if audio_file:
         info = {
             "file_name": Path(audio_file).name,
@@ -49,6 +58,8 @@ def main():
         with open("release_info.json", "w") as f:
             json.dump(info, f)
         print(f"SUCCESS:{audio_file}")
+    else:
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
