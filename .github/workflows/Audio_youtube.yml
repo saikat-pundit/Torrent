@@ -7,6 +7,10 @@ on:
         description: 'YouTube URL'
         required: true
         type: string
+      cookies:
+        description: 'Netscape format cookies (paste from browser)'
+        required: false
+        type: string
 
 jobs:
   download:
@@ -25,10 +29,15 @@ jobs:
     - name: Install yt-dlp
       run: pip install yt-dlp
     
+    - name: Create cookies file
+      if: inputs.cookies != ''
+      run: echo "${{ inputs.cookies }}" > cookies.txt
+    
     - name: Download Audio
-      run: python scripts/download_audio.py
+      run: python download_audio.py
       env:
         YOUTUBE_URL: ${{ inputs.youtube_url }}
+        COOKIES_FILE: ${{ inputs.cookies != '' && 'cookies.txt' || '' }}
     
     - name: Get File Info
       id: info
