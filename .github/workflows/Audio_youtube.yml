@@ -1,0 +1,51 @@
+name: YouTube Audio Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      youtube_url:
+        description: 'YouTube URL'
+        required: true
+        type: string
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install yt-dlp
+      run: pip install yt-dlp
+    
+    - name: Download Audio
+      run: python Scripts/download_audio.py
+      env:
+        YOUTUBE_URL: ${{ inputs.youtube_url }}
+    
+    - name: Get File Info
+      id: info
+      run: |
+        if [ -f release_info.json ]; then
+          echo "file=$(jq -r .file_name release_info.json)" >> $GITHUB_OUTPUT
+        else
+          exit 1
+        fi
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: YouTube-Audio
+        tag_name: Youtube-Audio
+        body: "Audio from: ${{ inputs.youtube_url }}"
+        files: ${{ steps.info.outputs.file }}
+        make_latest: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
