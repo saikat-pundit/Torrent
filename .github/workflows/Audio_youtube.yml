@@ -26,7 +26,7 @@ jobs:
       run: pip install yt-dlp
     
     - name: Download Audio
-      run: python Scripts/download_audio.py
+      run: python scripts/download_audio.py
       env:
         YOUTUBE_URL: ${{ inputs.youtube_url }}
     
